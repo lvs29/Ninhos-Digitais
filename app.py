@@ -1,13 +1,20 @@
+import os
 from flask import Flask
+from dotenv import load_dotenv
 
 from db import init_db
 from routes import register_blueprints
+from security import init_security
+
+load_dotenv()
 
 
 def create_app() -> Flask:
     app = Flask(__name__)
+    app.secret_key = os.environ["SECRET_KEY"]
 
     init_db()
+    init_security(app)
     register_blueprints(app)
 
     return app
