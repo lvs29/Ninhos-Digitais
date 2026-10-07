@@ -8,7 +8,33 @@
 <body>
   <header>
     <a href="{{ url_for('main.index') }}">Ninhos Digitais</a>
+
+    <nav>
+      {% if usuario_atual %}
+        <a href="{{ url_for('admin.especies_lista') }}">Espécies</a>
+        {% if usuario_atual.role == 'admin' %}
+          <a href="{{ url_for('admin.usuarios_lista') }}">Usuários</a>
+        {% endif %}
+        <a href="{{ url_for('auth.alterar_senha') }}">Minha senha</a>
+        <form method="post" action="{{ url_for('auth.logout') }}" style="display:inline">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit">Sair ({{ usuario_atual.username }})</button>
+        </form>
+      {% else %}
+        <a href="{{ url_for('auth.login') }}">Entrar</a>
+      {% endif %}
+    </nav>
   </header>
+
+  {% with mensagens = get_flashed_messages(with_categories=true) %}
+    {% if mensagens %}
+      <ul>
+        {% for categoria, texto in mensagens %}
+          <li class="{{ categoria }}">{{ texto }}</li>
+        {% endfor %}
+      </ul>
+    {% endif %}
+  {% endwith %}
 
   <main>
     {% block content %}{% endblock %}

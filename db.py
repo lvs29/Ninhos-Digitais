@@ -89,6 +89,9 @@ class Link(Base):
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 
+MIN_SENHA = 8
+
+
 def get_db() -> Session:
     return SessionLocal()
 
@@ -114,6 +117,9 @@ def verificar_senha(senha: str, senha_hash: str) -> bool:
     return hmac.compare_digest(h.hex(), h_hex)
 
 
+_HASH_FALSO = hash_senha("senha-falsa-para-igualar-tempo")
+
+
 def _limpar(valor, campo: str) -> str:
     """Valida e normaliza um campo de texto obrigatório."""
     if not isinstance(valor, str) or not valor.strip():
@@ -123,10 +129,15 @@ def _limpar(valor, campo: str) -> str:
 
 # ─── Usuários ─────────────────────────────────────────────────────────────────
 
-def criar_usuario(nome: str, username: str, senha: str, role: str = "user") -> dict:
+def criar_usuario(
+    nome: str, username: str, senha: str, role: str = "user",
+    exigir_senha_forte: bool = True,
+) -> dict:
     nome = _limpar(nome, "nome")
     username = _limpar(username, "username")
     senha = _limpar(senha, "senha")
+    if exigir_senha_forte and len(senha) < MIN_SENHA:
+        raise ValueError(f"A senha deve ter pelo menos {MIN_SENHA} caracteres.")
     if role not in ("user", "admin"):
         raise ValueError("role deve ser 'user' ou 'admin'.")
 
@@ -153,7 +164,10 @@ def autenticar_usuario(username: str, senha: str) -> dict | None:
     db = get_db()
     try:
         usuario = db.query(Usuario).filter_by(username=username).first()
-        if usuario and verificar_senha(senha, usuario.senha_hash):
+        if usuario is None:
+            verificar_senha(senha, _HASH_FALSO)  # evita revelar se o usuário existe
+            return None
+        if verificar_senha(senha, usuario.senha_hash):
             return usuario.to_dict()
         return None
     finally:
@@ -165,6 +179,47 @@ def buscar_usuario(usuario_id: int) -> dict | None:
     try:
         usuario = db.get(Usuario, usuario_id)
         return usuario.to_dict() if usuario else None
+    finally:
+        db.close()
+
+
+def listar_usuarios() -> list[dict]:
+    db = get_db()
+    try:
+        return [u.to_dict() for u in db.query(Usuario).order_by(Usuario.username).all()]
+    finally:
+        db.close()
+
+
+def remover_usuario(usuario_id: int) -> bool:
+    """Remove o usuário. Não permite remover o último admin."""
+    db = get_db()
+    try:
+        usuario = db.get(Usuario, usuario_id)
+        if not usuario:
+            return False
+        if usuario.role == "admin":
+            total_admins = db.query(Usuario).filter_by(role="admin").count()
+            if total_admins <= 1:
+                raise ValueError("Não é possível remover o último administrador.")
+        db.delete(usuario)
+        db.commit()
+        return True
+    finally:
+        db.close()
+
+
+def alterar_senha(usuario_id: int, senha_atual: str, nova_senha: str) -> None:
+    """Troca a senha, exigindo a senha atual. Levanta ValueError se algo estiver errado."""
+    if not isinstance(nova_senha, str) or len(nova_senha) < MIN_SENHA:
+        raise ValueError(f"A nova senha deve ter pelo menos {MIN_SENHA} caracteres.")
+    db = get_db()
+    try:
+        usuario = db.get(Usuario, usuario_id)
+        if not usuario or not verificar_senha(senha_atual, usuario.senha_hash):
+            raise ValueError("Senha atual incorreta.")
+        usuario.senha_hash = hash_senha(nova_senha)
+        db.commit()
     finally:
         db.close()
 
@@ -319,7 +374,7 @@ def _garantir_admin():
         db.close()
 
     if not existe:
-        criar_usuario("Admin", "admin", "admin", role="admin")
+        criar_usuario("Admin", "admin", "admin", role="admin", exigir_senha_forte=False)
         print("[db] Admin criado — usuario: admin | senha: admin (troque depois!)")
 
 
