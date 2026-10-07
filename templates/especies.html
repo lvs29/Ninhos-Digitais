@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}Espécies · Ninhos Digitais{% endblock %}
+
+{% block content %}
+<h1>Espécies</h1>
+
+<p><a href="{{ url_for('admin.especie_nova') }}">Cadastrar espécie</a></p>
+
+<form method="get">
+  <input type="search" name="q" value="{{ busca }}" placeholder="Buscar por nome">
+  <select name="ameacada">
+    <option value="" {{ 'selected' if not filtro }}>Todas</option>
+    <option value="1" {{ 'selected' if filtro == '1' }}>Ameaçadas</option>
+    <option value="0" {{ 'selected' if filtro == '0' }}>Não ameaçadas</option>
+  </select>
+  <button type="submit">Filtrar</button>
+</form>
+
+{% if especies %}
+<table border="1" cellpadding="6">
+  <thead>
+    <tr>
+      <th>Nome comum</th>
+      <th>Nome científico</th>
+      <th>Distribuição geográfica</th>
+      <th>Ameaçada</th>
+      <th>Link público</th>
+      <th>Ações</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for e in especies %}
+    <tr>
+      <td>{{ e.nome }}</td>
+      <td><em>{{ e.nome_cientifico }}</em></td>
+      <td>{{ e.distribuicao_geografica }}</td>
+      <td>{{ 'Sim' if e.ameacada else 'Não' }}</td>
+      <td><a href="{{ e.url }}">{{ e.url }}</a></td>
+      <td>
+        <a href="{{ url_for('admin.especie_editar', especie_id=e.id) }}">Editar</a>
+
+        <form method="post" action="{{ url_for('admin.especie_novo_codigo', especie_id=e.id) }}" style="display:inline"
+              onsubmit="return confirm('Gerar novo link? QR codes e tags NFC já gravados deixarão de funcionar.')">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit">Novo link</button>
+        </form>
+
+        <form method="post" action="{{ url_for('admin.especie_remover', especie_id=e.id) }}" style="display:inline"
+              onsubmit="return confirm('Remover {{ e.nome|e }}?')">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit">Remover</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p>Nenhuma espécie encontrada.</p>
+{% endif %}
+{% endblock %}

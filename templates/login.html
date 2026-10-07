@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Entrar · Ninhos Digitais{% endblock %}
+
+{% block content %}
+<h1>Entrar</h1>
+<form method="post">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <p>
+    <label>Usuário<br>
+      <input type="text" name="username" required autofocus autocomplete="username">
+    </label>
+  </p>
+  <p>
+    <label>Senha<br>
+      <input type="password" name="senha" required autocomplete="current-password">
+    </label>
+  </p>
+  <button type="submit">Entrar</button>
+</form>
+{% endblock %}

@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% set d = dados or {} %}
+{% block title %}Novo usuário · Ninhos Digitais{% endblock %}
+
+{% block content %}
+<h1>Criar usuário</h1>
+<form method="post">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <p>
+    <label>Nome<br>
+      <input type="text" name="nome" value="{{ d.nome }}" required>
+    </label>
+  </p>
+  <p>
+    <label>Usuário (login)<br>
+      <input type="text" name="username" value="{{ d.username }}" required autocomplete="off">
+    </label>
+  </p>
+  <p>
+    <label>Senha (mínimo de 8 caracteres)<br>
+      <input type="password" name="senha" required minlength="8" autocomplete="new-password">
+    </label>
+  </p>
+  <p>
+    <label>Papel<br>
+      <select name="role">
+        <option value="user" {{ 'selected' if d.role != 'admin' }}>Usuário (gerencia espécies)</option>
+        <option value="admin" {{ 'selected' if d.role == 'admin' }}>Administrador (também gerencia usuários)</option>
+      </select>
+    </label>
+  </p>
+  <button type="submit">Criar</button>
+  <a href="{{ url_for('admin.usuarios_lista') }}">Cancelar</a>
+</form>
+{% endblock %}

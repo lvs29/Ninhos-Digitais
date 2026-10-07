@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Minha senha · Ninhos Digitais{% endblock %}
+
+{% block content %}
+<h1>Alterar senha</h1>
+<form method="post">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <p>
+    <label>Senha atual<br>
+      <input type="password" name="senha_atual" required autocomplete="current-password">
+    </label>
+  </p>
+  <p>
+    <label>Nova senha (mínimo de 8 caracteres)<br>
+      <input type="password" name="nova_senha" required minlength="8" autocomplete="new-password">
+    </label>
+  </p>
+  <p>
+    <label>Confirmar nova senha<br>
+      <input type="password" name="confirmar" required minlength="8" autocomplete="new-password">
+    </label>
+  </p>
+  <button type="submit">Salvar senha</button>
+</form>
+{% endblock %}

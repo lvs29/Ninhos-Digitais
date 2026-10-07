@@ -1,0 +1,11 @@
+<!-- templates/especie.html -->
+{% extends "base.html" %}
+
+{% block title %}{{ especie.nome }}{% endblock %}
+
+{% block content %}
+<h1>{{ especie.nome }}</h1>
+<p><em>{{ especie.nome_cientifico }}</em></p>
+<p>Distribuição geográfica: {{ especie.distribuicao_geografica }}</p>
+<p>{{ "Espécie ameaçada de extinção" if especie.ameacada else "Não consta como ameaçada" }}</p>
+{% endblock %}

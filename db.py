@@ -80,7 +80,8 @@ class Link(Base):
         nullable=False,
         unique=True,
     )
-    # Código curto e imprevisível que vai na URL do QR code (ex.: /e/Ab3x_9QkLmw)
+    # Código curto e imprevisível que vai na URL pública da espécie (ex.: /e/Ab3x_9QkLmw).
+    # A URL é a mesma para qualquer meio de acesso (QR code, tag NFC, etc.).
     codigo = Column(String, nullable=False, unique=True, default=lambda: _novo_codigo())
 
     especie = relationship("Especie", back_populates="link")
@@ -176,7 +177,7 @@ def criar_especie(
     distribuicao_geografica: str,
     ameacada: bool = False,
 ) -> dict:
-    """Cria a espécie e já gera o link (código do QR code) associado."""
+    """Cria a espécie e já gera o link (código da URL pública) associado."""
     nome = _limpar(nome, "nome")
     nome_cientifico = _limpar(nome_cientifico, "nome_cientifico")
     distribuicao_geografica = _limpar(distribuicao_geografica, "distribuicao_geografica")
@@ -210,7 +211,7 @@ def obter_especie(especie_id: int) -> dict | None:
 
 
 def obter_especie_por_codigo(codigo: str) -> dict | None:
-    """Usada pela página pública acessada via QR code."""
+    """Usada pela página pública da espécie (QR code, NFC ou link direto)."""
     db = get_db()
     try:
         link = db.query(Link).filter_by(codigo=codigo).first()
@@ -287,8 +288,9 @@ def remover_especie(especie_id: int) -> bool:
 
 def regenerar_codigo(especie_id: int) -> str | None:
     """
-    Gera um novo código para o QR code da espécie (invalida o QR antigo).
-    Útil se um QR code impresso for comprometido.
+    Gera um novo código para a URL da espécie (invalida a URL antiga).
+    Útil se um QR code ou tag NFC já gravado for comprometido; nesse caso
+    será preciso reimprimir/regravar.
     """
     db = get_db()
     try:
