@@ -31,7 +31,7 @@ def init_security(app: Flask) -> None:
 
     @app.before_request
     def _carregar_usuario_e_checar_csrf():
-        # Usuário logado: sempre relido do banco (remoção/mudança de papel vale na hora)
+        # Usuário logado: sempre relido do banco (remoção de usuário vale na hora)
         g.usuario = None
         usuario_id = session.get("usuario_id")
         if usuario_id is not None:
@@ -62,22 +62,20 @@ def destino_seguro(destino: str | None, padrao: str) -> str:
     return destino
 
 
+def exigir_login():
+    """Retorna um redirect para /login se não houver usuário logado; senão None."""
+    if g.usuario is None:
+        if request.method == "GET":
+            return redirect(url_for("auth.login", next=request.full_path.rstrip("?")))
+        return redirect(url_for("auth.login"))
+    return None
+
+
 def login_required(f):
     @wraps(f)
     def wrapper(*args, **kwargs):
-        if g.usuario is None:
-            if request.method == "GET":
-                return redirect(url_for("auth.login", next=request.full_path.rstrip("?")))
-            return redirect(url_for("auth.login"))
-        return f(*args, **kwargs)
-    return wrapper
-
-
-def admin_required(f):
-    @wraps(f)
-    @login_required
-    def wrapper(*args, **kwargs):
-        if g.usuario["role"] != "admin":
-            abort(403)
+        resposta = exigir_login()
+        if resposta is not None:
+            return resposta
         return f(*args, **kwargs)
     return wrapper

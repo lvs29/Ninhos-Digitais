@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Tags · Ninhos Digitais{% endblock %}
+
+{% block content %}
+<h1>Tags</h1>
+
+<p><a href="{{ url_for('admin.tag_nova') }}">Criar tag</a></p>
+
+{% if tags %}
+<table border="1" cellpadding="6">
+  <thead>
+    <tr>
+      <th>Nome</th>
+      <th>Código (fixo)</th>
+      <th>Link público</th>
+      <th>Espécie</th>
+      <th>Ações</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for t in tags %}
+    <tr>
+      <td>{{ t.nome }}</td>
+      <td><code>{{ t.codigo }}</code></td>
+      <td><a href="{{ t.url }}">{{ t.url }}</a></td>
+      <td>{{ t.especie.nome if t.especie else '— livre —' }}</td>
+      <td>
+        <a href="{{ url_for('admin.tag_editar', tag_id=t.id) }}">Editar</a>
+
+        <form method="post" action="{{ url_for('admin.tag_remover', tag_id=t.id) }}" style="display:inline"
+              onsubmit="return confirm('Remover a tag {{ t.nome|e }}? O código dela deixará de funcionar.')">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit">Remover</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p>Nenhuma tag criada.</p>
+{% endif %}
+{% endblock %}

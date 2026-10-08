@@ -28,6 +28,17 @@
       Espécie ameaçada de extinção
     </label>
   </p>
+  <p>
+    <label>Tag<br>
+      <select name="tag_id">
+        <option value="">— Nenhuma —</option>
+        {% for t in tags %}
+          <option value="{{ t.id }}" {{ 'selected' if tag_id_atual == t.id|string }}>{{ t.nome }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <br><small>Só aparecem tags livres (e a tag atual desta espécie).</small>
+  </p>
   <button type="submit">Salvar</button>
   <a href="{{ url_for('admin.especies_lista') }}">Cancelar</a>
 </form>

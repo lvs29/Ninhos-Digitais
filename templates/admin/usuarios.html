@@ -7,14 +7,13 @@
 
 <table border="1" cellpadding="6">
   <thead>
-    <tr><th>Nome</th><th>Usuário</th><th>Papel</th><th>Criado em</th><th>Ações</th></tr>
+    <tr><th>Nome</th><th>Usuário</th><th>Criado em</th><th>Ações</th></tr>
   </thead>
   <tbody>
     {% for u in usuarios %}
     <tr>
       <td>{{ u.nome }}</td>
       <td>{{ u.username }}</td>
-      <td>{{ 'Administrador' if u.role == 'admin' else 'Usuário' }}</td>
       <td>{{ u.criado_em[:10] }}</td>
       <td>
         {% if u.id != usuario_atual.id %}

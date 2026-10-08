@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% set t = tag or {} %}
+{% block title %}{{ 'Nova tag' if novo else 'Editar tag' }} · Ninhos Digitais{% endblock %}
+
+{% block content %}
+<h1>{{ 'Criar tag' if novo else 'Editar tag' }}</h1>
+
+{% if not novo %}
+<p>Código (fixo, não pode ser alterado): <code>{{ codigo }}</code><br>
+   Link público: <a href="{{ url }}">{{ url }}</a></p>
+{% endif %}
+
+<form method="post">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <p>
+    <label>Nome da tag (para identificação)<br>
+      <input type="text" name="nome" value="{{ t.nome }}" required>
+    </label>
+  </p>
+  <p>
+    <label>Espécie<br>
+      <select name="especie_id">
+        <option value="">— Nenhuma —</option>
+        {% for e in especies %}
+          <option value="{{ e.id }}" {{ 'selected' if especie_id_atual == e.id|string }}>{{ e.nome }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <br><small>Só aparecem espécies sem tag (e a espécie atual desta tag).</small>
+  </p>
+  <button type="submit">Salvar</button>
+  <a href="{{ url_for('admin.tags_lista') }}">Cancelar</a>
+</form>
+{% endblock %}

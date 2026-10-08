@@ -24,6 +24,7 @@
       <th>Nome científico</th>
       <th>Distribuição geográfica</th>
       <th>Ameaçada</th>
+      <th>Tag</th>
       <th>Link público</th>
       <th>Ações</th>
     </tr>
@@ -35,15 +36,10 @@
       <td><em>{{ e.nome_cientifico }}</em></td>
       <td>{{ e.distribuicao_geografica }}</td>
       <td>{{ 'Sim' if e.ameacada else 'Não' }}</td>
-      <td><a href="{{ e.url }}">{{ e.url }}</a></td>
+      <td>{{ e.tag.nome if e.tag else '—' }}</td>
+      <td>{% if e.url %}<a href="{{ e.url }}">{{ e.url }}</a>{% else %}—{% endif %}</td>
       <td>
         <a href="{{ url_for('admin.especie_editar', especie_id=e.id) }}">Editar</a>
-
-        <form method="post" action="{{ url_for('admin.especie_novo_codigo', especie_id=e.id) }}" style="display:inline"
-              onsubmit="return confirm('Gerar novo link? QR codes e tags NFC já gravados deixarão de funcionar.')">
-          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <button type="submit">Novo link</button>
-        </form>
 
         <form method="post" action="{{ url_for('admin.especie_remover', especie_id=e.id) }}" style="display:inline"
               onsubmit="return confirm('Remover {{ e.nome|e }}?')">

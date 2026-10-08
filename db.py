@@ -6,7 +6,7 @@ from datetime import datetime
 
 from sqlalchemy import (
     create_engine, Column, Integer, String, Text, ForeignKey,
-    DateTime, Boolean,
+    DateTime, Boolean, func,
 )
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import declarative_base, sessionmaker, relationship, Session
@@ -21,13 +21,13 @@ Base = declarative_base()
 # ─── Modelos ──────────────────────────────────────────────────────────────────
 
 class Usuario(Base):
+    """Todo usuário é administrador (não existem papéis diferentes)."""
     __tablename__ = "usuarios"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     nome = Column(String, nullable=False)
     username = Column(String, nullable=False, unique=True)
     senha_hash = Column(String, nullable=False)
-    role = Column(String, nullable=False, default="user")
     criado_em = Column(DateTime, nullable=False, default=datetime.utcnow)
 
     def to_dict(self):
@@ -36,7 +36,6 @@ class Usuario(Base):
             "id": self.id,
             "nome": self.nome,
             "username": self.username,
-            "role": self.role,
             "criado_em": self.criado_em.isoformat(),
         }
 
@@ -51,40 +50,63 @@ class Especie(Base):
     ameacada = Column(Boolean, nullable=False, default=False)       # Ameaçada de extinção?
     criado_em = Column(DateTime, nullable=False, default=datetime.utcnow)
 
-    link = relationship(
-        "Link",
-        back_populates="especie",
-        uselist=False,
-        cascade="all, delete-orphan",
+    vinculo = relationship(
+        "Vinculo", back_populates="especie", uselist=False,
+        cascade="save-update, merge, delete",
     )
 
     def to_dict(self):
+        tag = self.vinculo.tag if self.vinculo else None
         return {
             "id": self.id,
             "nome": self.nome,
             "nome_cientifico": self.nome_cientifico,
             "distribuicao_geografica": self.distribuicao_geografica,
             "ameacada": self.ameacada,
-            "codigo": self.link.codigo if self.link else None,
+            "tag": {"id": tag.id, "nome": tag.nome, "codigo": tag.codigo} if tag else None,
             "criado_em": self.criado_em.isoformat(),
         }
 
 
-class Link(Base):
-    __tablename__ = "links"
+class Tag(Base):
+    """
+    Uma tag física (NFC, QR code impresso, etc.).
+    O `codigo` é gerado pelo programa e NUNCA muda (já está gravado/impresso).
+    O `nome` é só um rótulo editável para identificar a tag (ex.: "Sala 3").
+    """
+    __tablename__ = "tags"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    especie_id = Column(
-        Integer,
-        ForeignKey("especies.id"),
-        nullable=False,
-        unique=True,
-    )
-    # Código curto e imprevisível que vai na URL pública da espécie (ex.: /e/Ab3x_9QkLmw).
-    # A URL é a mesma para qualquer meio de acesso (QR code, tag NFC, etc.).
-    codigo = Column(String, nullable=False, unique=True, default=lambda: _novo_codigo())
+    nome = Column(String, nullable=False, unique=True)
+    codigo = Column(String, nullable=False, unique=True)
+    criado_em = Column(DateTime, nullable=False, default=datetime.utcnow)
 
-    especie = relationship("Especie", back_populates="link")
+    vinculo = relationship(
+        "Vinculo", back_populates="tag", uselist=False,
+        cascade="save-update, merge, delete",
+    )
+
+    def to_dict(self):
+        especie = self.vinculo.especie if self.vinculo else None
+        return {
+            "id": self.id,
+            "nome": self.nome,
+            "codigo": self.codigo,
+            "especie": {"id": especie.id, "nome": especie.nome} if especie else None,
+            "criado_em": self.criado_em.isoformat(),
+        }
+
+
+class Vinculo(Base):
+    """Tabela 1:1 entre espécie e tag (cada uma só pode aparecer uma vez)."""
+    __tablename__ = "vinculos"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    especie_id = Column(Integer, ForeignKey("especies.id"), nullable=False, unique=True)
+    tag_id = Column(Integer, ForeignKey("tags.id"), nullable=False, unique=True)
+
+    especie = relationship("Especie", back_populates="vinculo")
+    tag = relationship("Tag", back_populates="vinculo")
 
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -130,25 +152,17 @@ def _limpar(valor, campo: str) -> str:
 # ─── Usuários ─────────────────────────────────────────────────────────────────
 
 def criar_usuario(
-    nome: str, username: str, senha: str, role: str = "user",
-    exigir_senha_forte: bool = True,
+    nome: str, username: str, senha: str, exigir_senha_forte: bool = True,
 ) -> dict:
     nome = _limpar(nome, "nome")
     username = _limpar(username, "username")
     senha = _limpar(senha, "senha")
     if exigir_senha_forte and len(senha) < MIN_SENHA:
         raise ValueError(f"A senha deve ter pelo menos {MIN_SENHA} caracteres.")
-    if role not in ("user", "admin"):
-        raise ValueError("role deve ser 'user' ou 'admin'.")
 
     db = get_db()
     try:
-        usuario = Usuario(
-            nome=nome,
-            username=username,
-            senha_hash=hash_senha(senha),
-            role=role,
-        )
+        usuario = Usuario(nome=nome, username=username, senha_hash=hash_senha(senha))
         db.add(usuario)
         db.commit()
         return usuario.to_dict()
@@ -192,16 +206,14 @@ def listar_usuarios() -> list[dict]:
 
 
 def remover_usuario(usuario_id: int) -> bool:
-    """Remove o usuário. Não permite remover o último admin."""
+    """Remove o usuário. Não permite remover o último (ninguém mais conseguiria entrar)."""
     db = get_db()
     try:
         usuario = db.get(Usuario, usuario_id)
         if not usuario:
             return False
-        if usuario.role == "admin":
-            total_admins = db.query(Usuario).filter_by(role="admin").count()
-            if total_admins <= 1:
-                raise ValueError("Não é possível remover o último administrador.")
+        if db.query(Usuario).count() <= 1:
+            raise ValueError("Não é possível remover o último administrador.")
         db.delete(usuario)
         db.commit()
         return True
@@ -224,6 +236,178 @@ def alterar_senha(usuario_id: int, senha_atual: str, nova_senha: str) -> None:
         db.close()
 
 
+# ─── Vínculo espécie <-> tag (1:1, editável dos dois lados) ───────────────────
+
+def _vincular(db: Session, especie: Especie, tag: Tag, lado: str) -> None:
+    """
+    Liga `especie` a `tag`. `lado` diz quem está sendo editado:
+      "especie": troca a tag desta espécie (a tag antiga fica livre);
+      "tag":     troca a espécie desta tag (a espécie antiga fica livre).
+    Nunca "rouba" o par de um terceiro: se o outro lado já estiver ocupado,
+    levanta ValueError e pede para desvincular antes.
+    """
+    atual_esp = db.query(Vinculo).filter_by(especie_id=especie.id).first()
+    atual_tag = db.query(Vinculo).filter_by(tag_id=tag.id).first()
+
+    if atual_esp and atual_tag and atual_esp.id == atual_tag.id:
+        return  # já estão vinculadas
+
+    if lado == "especie":
+        if atual_tag:
+            raise ValueError(
+                f"A tag '{tag.nome}' já está vinculada à espécie "
+                f"'{atual_tag.especie.nome}'. Desvincule-a antes."
+            )
+        if atual_esp:
+            db.delete(atual_esp)
+            db.flush()  # libera a UNIQUE antes de inserir o novo vínculo
+    else:
+        if atual_esp:
+            raise ValueError(
+                f"A espécie '{especie.nome}' já está vinculada à tag "
+                f"'{atual_esp.tag.nome}'. Desvincule-a antes."
+            )
+        if atual_tag:
+            db.delete(atual_tag)
+            db.flush()
+
+    db.add(Vinculo(especie_id=especie.id, tag_id=tag.id))
+
+
+def _definir_tag_da_especie(db: Session, especie: Especie, tag_id: int | None) -> None:
+    if tag_id is None:
+        atual = db.query(Vinculo).filter_by(especie_id=especie.id).first()
+        if atual:
+            db.delete(atual)
+            db.flush()
+        return
+    tag = db.get(Tag, tag_id)
+    if tag is None:
+        raise ValueError("Tag não encontrada.")
+    _vincular(db, especie, tag, lado="especie")
+
+
+def _definir_especie_da_tag(db: Session, tag: Tag, especie_id: int | None) -> None:
+    if especie_id is None:
+        atual = db.query(Vinculo).filter_by(tag_id=tag.id).first()
+        if atual:
+            db.delete(atual)
+            db.flush()
+        return
+    especie = db.get(Especie, especie_id)
+    if especie is None:
+        raise ValueError("Espécie não encontrada.")
+    _vincular(db, especie, tag, lado="tag")
+
+
+# ─── Tags ─────────────────────────────────────────────────────────────────────
+
+def _nome_de_tag_em_uso(db: Session, nome: str, ignorar_id: int | None = None) -> bool:
+    q = db.query(Tag).filter(func.lower(Tag.nome) == nome.lower())
+    if ignorar_id is not None:
+        q = q.filter(Tag.id != ignorar_id)
+    return q.first() is not None
+
+
+def criar_tag(nome: str, especie_id: int | None = None) -> dict:
+    """Cria a tag com um código gerado pelo programa (fixo para sempre)."""
+    nome = _limpar(nome, "nome")
+
+    db = get_db()
+    try:
+        if _nome_de_tag_em_uso(db, nome):
+            raise ValueError(f"Já existe uma tag chamada '{nome}'.")
+
+        for _ in range(5):  # colisão de código é praticamente impossível; só por garantia
+            tag = Tag(nome=nome, codigo=_novo_codigo())
+            db.add(tag)
+            try:
+                db.flush()
+                break
+            except IntegrityError:
+                db.rollback()
+        else:
+            raise RuntimeError("Não foi possível gerar um código único para a tag.")
+
+        if especie_id is not None:
+            _definir_especie_da_tag(db, tag, especie_id)
+        db.commit()
+        return tag.to_dict()
+    finally:
+        db.close()
+
+
+def obter_tag(tag_id: int) -> dict | None:
+    db = get_db()
+    try:
+        tag = db.get(Tag, tag_id)
+        return tag.to_dict() if tag else None
+    finally:
+        db.close()
+
+
+def obter_tag_por_codigo(codigo: str) -> dict | None:
+    db = get_db()
+    try:
+        tag = db.query(Tag).filter_by(codigo=codigo).first()
+        return tag.to_dict() if tag else None
+    finally:
+        db.close()
+
+
+def listar_tags() -> list[dict]:
+    db = get_db()
+    try:
+        return [t.to_dict() for t in db.query(Tag).order_by(Tag.nome).all()]
+    finally:
+        db.close()
+
+
+def atualizar_tag(tag_id: int, **campos) -> dict | None:
+    """
+    Campos aceitos: nome, especie_id (None desvincula).
+    O código NÃO pode ser alterado. Retorna a tag atualizada ou None se não existir.
+    """
+    permitidos = {"nome", "especie_id"}
+    invalidos = set(campos) - permitidos
+    if invalidos:
+        raise ValueError(f"Campos inválidos: {', '.join(sorted(invalidos))}")
+
+    db = get_db()
+    try:
+        tag = db.get(Tag, tag_id)
+        if not tag:
+            return None
+        if "nome" in campos:
+            nome = _limpar(campos["nome"], "nome")
+            if _nome_de_tag_em_uso(db, nome, ignorar_id=tag.id):
+                raise ValueError(f"Já existe uma tag chamada '{nome}'.")
+            tag.nome = nome
+        if "especie_id" in campos:
+            _definir_especie_da_tag(db, tag, campos["especie_id"])
+        db.commit()
+        return tag.to_dict()
+    except IntegrityError:
+        db.rollback()
+        raise ValueError("Já existe uma tag com esse nome.")
+    finally:
+        db.close()
+
+
+def remover_tag(tag_id: int) -> bool:
+    """Remove a tag e o vínculo dela (a espécie continua existindo)."""
+    db = get_db()
+    try:
+        tag = db.get(Tag, tag_id)
+        if not tag:
+            return False
+        db.delete(tag)
+        db.commit()
+        return True
+    finally:
+        db.close()
+
+
 # ─── Espécies ─────────────────────────────────────────────────────────────────
 
 def criar_especie(
@@ -231,8 +415,8 @@ def criar_especie(
     nome_cientifico: str,
     distribuicao_geografica: str,
     ameacada: bool = False,
+    tag_id: int | None = None,
 ) -> dict:
-    """Cria a espécie e já gera o link (código da URL pública) associado."""
     nome = _limpar(nome, "nome")
     nome_cientifico = _limpar(nome_cientifico, "nome_cientifico")
     distribuicao_geografica = _limpar(distribuicao_geografica, "distribuicao_geografica")
@@ -245,8 +429,10 @@ def criar_especie(
             distribuicao_geografica=distribuicao_geografica,
             ameacada=bool(ameacada),
         )
-        especie.link = Link()
         db.add(especie)
+        db.flush()
+        if tag_id is not None:
+            _definir_tag_da_especie(db, especie, tag_id)
         db.commit()
         return especie.to_dict()
     except IntegrityError:
@@ -266,11 +452,13 @@ def obter_especie(especie_id: int) -> dict | None:
 
 
 def obter_especie_por_codigo(codigo: str) -> dict | None:
-    """Usada pela página pública da espécie (QR code, NFC ou link direto)."""
+    """Espécie ligada à tag com esse código (None se a tag não existir ou estiver livre)."""
     db = get_db()
     try:
-        link = db.query(Link).filter_by(codigo=codigo).first()
-        return link.especie.to_dict() if link else None
+        tag = db.query(Tag).filter_by(codigo=codigo).first()
+        if tag is None or tag.vinculo is None:
+            return None
+        return tag.vinculo.especie.to_dict()
     finally:
         db.close()
 
@@ -298,11 +486,10 @@ def listar_especies(busca: str | None = None, ameacada: bool | None = None) -> l
 
 def atualizar_especie(especie_id: int, **campos) -> dict | None:
     """
-    Atualiza apenas os campos informados. Campos aceitos:
-    nome, nome_cientifico, distribuicao_geografica, ameacada.
-    Retorna a espécie atualizada ou None se o id não existir.
+    Campos aceitos: nome, nome_cientifico, distribuicao_geografica, ameacada,
+    tag_id (None desvincula). Retorna a espécie atualizada ou None se não existir.
     """
-    permitidos = {"nome", "nome_cientifico", "distribuicao_geografica", "ameacada"}
+    permitidos = {"nome", "nome_cientifico", "distribuicao_geografica", "ameacada", "tag_id"}
     invalidos = set(campos) - permitidos
     if invalidos:
         raise ValueError(f"Campos inválidos: {', '.join(sorted(invalidos))}")
@@ -313,11 +500,12 @@ def atualizar_especie(especie_id: int, **campos) -> dict | None:
         if not especie:
             return None
         for campo, valor in campos.items():
-            if campo == "ameacada":
-                valor = bool(valor)
-            else:
-                valor = _limpar(valor, campo)
+            if campo == "tag_id":
+                continue
+            valor = bool(valor) if campo == "ameacada" else _limpar(valor, campo)
             setattr(especie, campo, valor)
+        if "tag_id" in campos:
+            _definir_tag_da_especie(db, especie, campos["tag_id"])
         db.commit()
         return especie.to_dict()
     except IntegrityError:
@@ -328,7 +516,7 @@ def atualizar_especie(especie_id: int, **campos) -> dict | None:
 
 
 def remover_especie(especie_id: int) -> bool:
-    """Remove a espécie e o link dela. Retorna False se o id não existir."""
+    """Remove a espécie e o vínculo dela (a tag continua existindo, livre)."""
     db = get_db()
     try:
         especie = db.get(Especie, especie_id)
@@ -337,24 +525,6 @@ def remover_especie(especie_id: int) -> bool:
         db.delete(especie)
         db.commit()
         return True
-    finally:
-        db.close()
-
-
-def regenerar_codigo(especie_id: int) -> str | None:
-    """
-    Gera um novo código para a URL da espécie (invalida a URL antiga).
-    Útil se um QR code ou tag NFC já gravado for comprometido; nesse caso
-    será preciso reimprimir/regravar.
-    """
-    db = get_db()
-    try:
-        link = db.query(Link).filter_by(especie_id=especie_id).first()
-        if not link:
-            return None
-        link.codigo = _novo_codigo()
-        db.commit()
-        return link.codigo
     finally:
         db.close()
 
@@ -369,12 +539,12 @@ def init_db():
 def _garantir_admin():
     db = get_db()
     try:
-        existe = db.query(Usuario).filter_by(role="admin").first()
+        existe = db.query(Usuario).first()
     finally:
         db.close()
 
     if not existe:
-        criar_usuario("Admin", "admin", "admin", role="admin", exigir_senha_forte=False)
+        criar_usuario("Admin", "admin", "admin", exigir_senha_forte=False)
         print("[db] Admin criado — usuario: admin | senha: admin (troque depois!)")
 
 
