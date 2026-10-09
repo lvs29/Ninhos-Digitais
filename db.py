@@ -8,6 +8,7 @@ from sqlalchemy import (
     create_engine, Column, Integer, String, Text, ForeignKey,
     DateTime, Boolean, func,
 )
+from sqlalchemy import inspect
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import declarative_base, sessionmaker, relationship, Session
 
@@ -142,6 +143,13 @@ def verificar_senha(senha: str, senha_hash: str) -> bool:
 _HASH_FALSO = hash_senha("senha-falsa-para-igualar-tempo")
 
 
+def _e_duplicado(erro: IntegrityError) -> bool:
+    """True só se o erro for de valor repetido (UNIQUE). Outros erros (NOT NULL, etc.)
+    indicam bug ou banco desatualizado e NÃO devem virar 'já existe'."""
+    msg = str(erro.orig).lower()
+    return "unique" in msg or "duplicate key" in msg
+
+
 def _limpar(valor, campo: str) -> str:
     """Valida e normaliza um campo de texto obrigatório."""
     if not isinstance(valor, str) or not valor.strip():
@@ -166,8 +174,10 @@ def criar_usuario(
         db.add(usuario)
         db.commit()
         return usuario.to_dict()
-    except IntegrityError:
+    except IntegrityError as e:
         db.rollback()
+        if not _e_duplicado(e):
+            raise
         raise ValueError(f"O usuário '{username}' já existe.")
     finally:
         db.close()
@@ -387,8 +397,10 @@ def atualizar_tag(tag_id: int, **campos) -> dict | None:
             _definir_especie_da_tag(db, tag, campos["especie_id"])
         db.commit()
         return tag.to_dict()
-    except IntegrityError:
+    except IntegrityError as e:
         db.rollback()
+        if not _e_duplicado(e):
+            raise
         raise ValueError("Já existe uma tag com esse nome.")
     finally:
         db.close()
@@ -435,8 +447,10 @@ def criar_especie(
             _definir_tag_da_especie(db, especie, tag_id)
         db.commit()
         return especie.to_dict()
-    except IntegrityError:
+    except IntegrityError as e:
         db.rollback()
+        if not _e_duplicado(e):
+            raise
         raise ValueError(f"A espécie '{nome}' já está cadastrada.")
     finally:
         db.close()
@@ -508,8 +522,10 @@ def atualizar_especie(especie_id: int, **campos) -> dict | None:
             _definir_tag_da_especie(db, especie, campos["tag_id"])
         db.commit()
         return especie.to_dict()
-    except IntegrityError:
+    except IntegrityError as e:
         db.rollback()
+        if not _e_duplicado(e):
+            raise
         raise ValueError("Já existe uma espécie com esse nome.")
     finally:
         db.close()
@@ -531,7 +547,24 @@ def remover_especie(especie_id: int) -> bool:
 
 # ─── Init ─────────────────────────────────────────────────────────────────────
 
+def _verificar_esquema():
+    """Falha cedo, com instrução clara, se o arquivo do banco for de uma versão antiga."""
+    insp = inspect(engine)
+    tabelas = set(insp.get_table_names())
+    antigo = "links" in tabelas or (
+        "usuarios" in tabelas
+        and "role" in {c["name"] for c in insp.get_columns("usuarios")}
+    )
+    if antigo:
+        raise RuntimeError(
+            "O banco de dados é de uma versão antiga (tem a tabela 'links' ou a coluna "
+            "'role'). Apague o arquivo database.db e inicie o programa de novo para "
+            "recriá-lo. Atenção: isso apaga os dados cadastrados."
+        )
+
+
 def init_db():
+    _verificar_esquema()
     Base.metadata.create_all(bind=engine)
     _garantir_admin()
 
