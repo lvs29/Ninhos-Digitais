@@ -1,0 +1,16 @@
+Para agora:
+[ ] Adicionar informações opcionais sobre as especies
+[ ] Mais de uma especie por aquario/tag
+[ ] Importar/exportar configuração de tags
+[ ] Adicionar categoria de ameaça da especie
+[ ] Alterar visibilidade pública de uma especie sem apaga-la
+[ ] Contagem de acessos
+[ ] Campo de imagem para as especies
+
+Pro futuro:
+[ ] Interface
+[ ] Gerar qrcore/folha de impressão
+[ ] Backups do banco
+[ ] Sistema do quiz
+[ ] Importação de especies por lote (CSV)
+[ ] Log de auditoria
