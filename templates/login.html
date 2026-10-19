@@ -1,20 +1,75 @@
 {% extends "base.html" %}
+
 {% block title %}Entrar · Ninhos Digitais{% endblock %}
 
 {% block content %}
-<h1>Entrar</h1>
-<form method="post">
-  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-  <p>
-    <label>Usuário<br>
-      <input type="text" name="username" required autofocus autocomplete="username">
-    </label>
-  </p>
-  <p>
-    <label>Senha<br>
-      <input type="password" name="senha" required autocomplete="current-password">
-    </label>
-  </p>
-  <button type="submit">Entrar</button>
-</form>
+<!-- Contentor centralizado na vertical e horizontal -->
+<div class="d-flex align-items-center justify-content-center my-auto" style="min-height: 65vh;">
+    <div class="col-12 col-sm-8 col-md-6 col-lg-4">
+        
+        <!-- Cartão de Login -->
+        <div class="card border-0 shadow-sm rounded-4 bg-white">
+            <div class="card-body p-4 p-sm-5">
+                
+                <!-- Ícone e Título -->
+                <div class="text-center mb-4">
+                    <div class="p-3 rounded-circle bg-success-subtle d-inline-block text-success mb-3">
+                        <i class="bi bi-person-badge fs-1"></i>
+                    </div>
+                    <h1 class="h3 fw-bold text-dark mb-1">Entrar</h1>
+                    <p class="text-secondary small mb-0">Aceda ao painel do Ninhos Digitais</p>
+                </div>
+
+                <!-- Formulário -->
+                <form method="post">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    
+                    <!-- Campo Usuário -->
+                    <div class="mb-3">
+                        <label for="username" class="form-label fw-semibold text-secondary">Utilizador</label>
+                        <div class="input-group">
+                            <span class="input-group-text bg-light border-end-0 text-secondary">
+                                <i class="bi bi-person"></i>
+                            </span>
+                            <input type="text" 
+                                   id="username" 
+                                   name="username" 
+                                   class="form-control bg-light border-start-0 ps-0" 
+                                   placeholder="Digite o seu utilizador"
+                                   required 
+                                   autofocus 
+                                   autocomplete="username">
+                        </div>
+                    </div>
+
+                    <!-- Campo Senha -->
+                    <div class="mb-4">
+                        <label for="senha" class="form-label fw-semibold text-secondary">Palavra-passe</label>
+                        <div class="input-group">
+                            <span class="input-group-text bg-light border-end-0 text-secondary">
+                                <i class="bi bi-key"></i>
+                            </span>
+                            <input type="password" 
+                                   id="senha" 
+                                   name="senha" 
+                                   class="form-control bg-light border-start-0 ps-0" 
+                                   placeholder="Digite a sua palavra-passe"
+                                   required 
+                                   autocomplete="current-password">
+                        </div>
+                    </div>
+
+                    <!-- Botão Entrar -->
+                    <div class="d-grid">
+                        <button type="submit" class="btn btn-success btn-lg fw-semibold shadow-sm">
+                            <i class="bi bi-box-arrow-in-right me-1"></i> Entrar
+                        </button>
+                    </div>
+                </form>
+
+            </div>
+        </div>
+
+    </div>
+</div>
 {% endblock %}

@@ -2,24 +2,90 @@
 {% block title %}Minha senha · Ninhos Digitais{% endblock %}
 
 {% block content %}
-<h1>Alterar senha</h1>
-<form method="post">
-  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-  <p>
-    <label>Senha atual<br>
-      <input type="password" name="senha_atual" required autocomplete="current-password">
-    </label>
-  </p>
-  <p>
-    <label>Nova senha (mínimo de 8 caracteres)<br>
-      <input type="password" name="nova_senha" required minlength="8" autocomplete="new-password">
-    </label>
-  </p>
-  <p>
-    <label>Confirmar nova senha<br>
-      <input type="password" name="confirmar" required minlength="8" autocomplete="new-password">
-    </label>
-  </p>
-  <button type="submit">Salvar senha</button>
-</form>
+<div class="d-flex align-items-center justify-content-center my-auto" style="min-height: 65vh;">
+    <div class="col-12 col-sm-10 col-md-8 col-lg-5">
+        
+        <!-- Cartão de Alteração de Senha -->
+        <div class="card border-0 shadow-sm rounded-4 bg-white">
+            <div class="card-body p-4 p-sm-5">
+                
+                <!-- Ícone e Título -->
+                <div class="text-center mb-4">
+                    <div class="p-3 rounded-circle bg-warning-subtle d-inline-block text-warning-emphasis mb-3">
+                        <i class="bi bi-shield-lock fs-1"></i>
+                    </div>
+                    <h1 class="h3 fw-bold text-dark mb-1">Alterar senha</h1>
+                    <p class="text-secondary small mb-0">Atualize as suas credenciais de acesso</p>
+                </div>
+
+                <!-- Formulário -->
+                <form method="post">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    
+                    <!-- Campo Senha Atual -->
+                    <div class="mb-3">
+                        <label for="senha_atual" class="form-label fw-semibold text-secondary">Senha atual</label>
+                        <div class="input-group">
+                            <span class="input-group-text bg-light border-end-0 text-secondary">
+                                <i class="bi bi-key"></i>
+                            </span>
+                            <input type="password" 
+                                   id="senha_atual" 
+                                   name="senha_atual" 
+                                   class="form-control bg-light border-start-0 ps-0" 
+                                   placeholder="Digite a sua senha atual"
+                                   required 
+                                   autocomplete="current-password">
+                        </div>
+                    </div>
+
+                    <!-- Campo Nova Senha -->
+                    <div class="mb-3">
+                        <label for="nova_senha" class="form-label fw-semibold text-secondary">Nova senha <span class="fw-normal text-muted small">(mínimo de 8 caracteres)</span></label>
+                        <div class="input-group">
+                            <span class="input-group-text bg-light border-end-0 text-secondary">
+                                <i class="bi bi-lock"></i>
+                            </span>
+                            <input type="password" 
+                                   id="nova_senha" 
+                                   name="nova_senha" 
+                                   class="form-control bg-light border-start-0 ps-0" 
+                                   placeholder="Digite a nova senha"
+                                   required 
+                                   minlength="8" 
+                                   autocomplete="new-password">
+                        </div>
+                    </div>
+
+                    <!-- Campo Confirmar Nova Senha -->
+                    <div class="mb-4">
+                        <label for="confirmar" class="form-label fw-semibold text-secondary">Confirmar nova senha</label>
+                        <div class="input-group">
+                            <span class="input-group-text bg-light border-end-0 text-secondary">
+                                <i class="bi bi-check2-circle"></i>
+                            </span>
+                            <input type="password" 
+                                   id="confirmar" 
+                                   name="confirmar" 
+                                   class="form-control bg-light border-start-0 ps-0" 
+                                   placeholder="Repita a nova senha"
+                                   required 
+                                   minlength="8" 
+                                   autocomplete="new-password">
+                        </div>
+                    </div>
+
+                    <!-- Botão Salvar Senha -->
+                    <div class="d-grid">
+                        <button type="submit" class="btn btn-success btn-lg fw-semibold shadow-sm">
+                            <i class="bi bi-check-lg me-1"></i> Salvar senha
+                        </button>
+                    </div>
+                </form>
+
+            </div>
+        </div>
+
+    </div>
+</div>
 {% endblock %}

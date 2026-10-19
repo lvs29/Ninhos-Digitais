@@ -1,7 +1,104 @@
 {% extends "base.html" %}
 
+{% block title %}Início · Ninhos Digitais{% endblock %}
+
 {% block content %}
-<h1>Ninhos Digitais</h1>
-<p>Bem-vindo ao zoológico. Em cada recinto há uma placa que leva até a página do animal.</p>
-<p>Basta usar o celular na placa para ver o nome comum, o nome científico, a distribuição geográfica e se a espécie está ameaçada de extinção.</p>
+<!-- Hero / Cabeçalho Principal -->
+<div class="row justify-content-center py-4">
+    <div class="col-lg-10 text-center">
+        <span class="badge bg-success-subtle text-success fw-semibold px-3 py-2 rounded-pill mb-3">
+            <i class="bi bi-qr-code-scan me-1"></i> Zoológico Interativo
+        </span>
+        <h1 class="display-4 fw-bold text-dark mb-3">Ninhos Digitais</h1>
+        <p class="lead text-secondary mx-auto mb-4" style="max-width: 700px;">
+            Explore e aprenda sobre as espécies do nosso zoológico de forma simples e rápida utilizando o seu telemóvel nas placas dos recintos.
+        </p>
+    </div>
+</div>
+
+<!-- Cartão de Instruções -->
+<div class="row justify-content-center mb-5">
+    <div class="col-lg-10">
+        <div class="card border-0 shadow-sm rounded-4 bg-white p-4 p-md-5">
+            <div class="row align-items-center g-4">
+                <div class="col-md-7">
+                    <h2 class="h4 fw-bold text-success mb-3">
+                        <i class="bi bi-phone me-2"></i>Como funciona?
+                    </h2>
+                    <p class="text-secondary mb-0 fs-5" style="line-height: 1.6;">
+                        Em cada recinto há uma placa que leva até a página do animal. 
+                        Basta aproximar ou ler o <strong>QR Code / NFC</strong> com o seu telemóvel para aceder a todas as informações em tempo real.
+                    </p>
+                </div>
+                <div class="col-md-5 text-center">
+                    <div class="p-4 rounded-4 bg-light d-inline-block">
+                        <i class="bi bi-qr-code display-1 text-success"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Destaques das Informações Disponíveis -->
+<div class="row justify-content-center mb-5">
+    <div class="col-lg-10">
+        <h3 class="h5 fw-bold text-center text-muted mb-4 text-uppercase tracking-wide">O que vai encontrar na placa</h3>
+        <div class="row g-3">
+            
+            <!-- Nome Comum -->
+            <div class="col-6 col-md-3">
+                <div class="card h-100 border-0 shadow-sm rounded-4 text-center p-3">
+                    <div class="card-body">
+                        <div class="text-success mb-2">
+                            <i class="bi bi-tag-fill fs-2"></i>
+                        </div>
+                        <h4 class="h6 fw-bold mb-1">Nome Comum</h4>
+                        <p class="small text-muted mb-0">Identificação popular da espécie</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Nome Científico -->
+            <div class="col-6 col-md-3">
+                <div class="card h-100 border-0 shadow-sm rounded-4 text-center p-3">
+                    <div class="card-body">
+                        <div class="text-success mb-2">
+                            <i class="bi bi-journal-text fs-2"></i>
+                        </div>
+                        <h4 class="h6 fw-bold mb-1">Nome Científico</h4>
+                        <p class="small text-muted mb-0">Nomenclatura biológica oficial</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Distribuição Geográfica -->
+            <div class="col-6 col-md-3">
+                <div class="card h-100 border-0 shadow-sm rounded-4 text-center p-3">
+                    <div class="card-body">
+                        <div class="text-success mb-2">
+                            <i class="bi bi-geo-alt-fill fs-2"></i>
+                        </div>
+                        <h4 class="h6 fw-bold mb-1">Distribuição</h4>
+                        <p class="small text-muted mb-0">Habitats e regiões onde vive</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Status de Conservação -->
+            <div class="col-6 col-md-3">
+                <div class="card h-100 border-0 shadow-sm rounded-4 text-center p-3">
+                    <div class="card-body">
+                        <div class="text-success mb-2">
+                            <i class="bi bi-shield-exclamation fs-2"></i>
+                        </div>
+                        <h4 class="h6 fw-bold mb-1">Estado de Ameaça</h4>
+                        <p class="small text-muted mb-0">Nível de risco de extinção</p>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+</div>
 {% endblock %}

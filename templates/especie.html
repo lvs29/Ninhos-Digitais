@@ -1,11 +1,62 @@
-<!-- templates/especie.html -->
 {% extends "base.html" %}
 
-{% block title %}{{ especie.nome }}{% endblock %}
+{% block title %}{{ especie.nome }} · Ninhos Digitais{% endblock %}
 
 {% block content %}
-<h1>{{ especie.nome }}</h1>
-<p><em>{{ especie.nome_cientifico }}</em></p>
-<p>Distribuição geográfica: {{ especie.distribuicao_geografica }}</p>
-<p>{{ "Espécie ameaçada de extinção" if especie.ameacada else "Não consta como ameaçada" }}</p>
+<div class="row justify-content-center py-3">
+    <div class="col-12 col-md-8 col-lg-6">
+        
+        <!-- Cartão Principal do Animal -->
+        <div class="card border-0 shadow rounded-4 overflow-hidden bg-white">
+            
+            <!-- Cabeçalho com cor destacada -->
+            <div class="bg-success text-white p-4 text-center position-relative">
+                <span class="badge bg-white text-success fw-semibold px-3 py-2 rounded-pill mb-2 shadow-sm">
+                    <i class="bi bi-qr-code-scan me-1"></i> Recinto do Zoo
+                </span>
+                <h1 class="display-5 fw-bold mb-1">{{ especie.nome }}</h1>
+                <p class="fs-5 fst-italic opacity-75 mb-0">{{ especie.nome_cientifico }}</p>
+            </div>
+
+            <div class="card-body p-4 p-sm-5">
+                
+                <!-- Status de Conservação -->
+                <div class="mb-4 text-center">
+                    {% if especie.ameacada %}
+                        <div class="alert alert-danger d-inline-flex align-items-center rounded-pill px-4 py-2 border-0 shadow-sm" role="alert">
+                            <i class="bi bi-exclamation-triangle-fill me-2 fs-5"></i>
+                            <span class="fw-bold">Espécie ameaçada de extinção</span>
+                        </div>
+                    {% else %}
+                        <div class="alert alert-success d-inline-flex align-items-center rounded-pill px-4 py-2 border-0 shadow-sm" role="alert">
+                            <i class="bi bi-shield-check me-2 fs-5"></i>
+                            <span class="fw-bold">Não consta como ameaçada</span>
+                        </div>
+                    {% endif %}
+                </div>
+
+                <hr class="my-4 text-muted opacity-25">
+
+                <!-- Informações Detalhadas -->
+                <div class="d-flex align-items-start mb-3">
+                    <div class="p-3 rounded-circle bg-light text-success me-3">
+                        <i class="bi bi-geo-alt-fill fs-3"></i>
+                    </div>
+                    <div>
+                        <h2 class="h6 text-muted text-uppercase fw-bold mb-1" style="letter-spacing: 0.5px;">Distribuição Geográfica</h2>
+                        <p class="fs-5 text-dark fw-medium mb-0">{{ especie.distribuicao_geografica }}</p>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Rodapé do Cartão com aviso -->
+            <div class="card-footer bg-light border-0 p-3 text-center text-muted small">
+                <i class="bi bi-heart-fill text-danger me-1"></i> Respeite os animais: mantenha uma distância segura do recinto.
+            </div>
+
+        </div>
+
+    </div>
+</div>
 {% endblock %}

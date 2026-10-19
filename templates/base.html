@@ -4,43 +4,80 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Ninhos Digitais{% endblock %}</title>
+  
+  <!-- Bootstrap 5 CSS CDN -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <!-- Bootstrap Icons -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
 </head>
-<body>
-  <header>
-    <a href="{{ url_for('main.index') }}">Ninhos Digitais</a>
+<body class="bg-light d-flex flex-column min-vh-100">
 
-    <nav>
-      {% if usuario_atual %}
-        <a href="{{ url_for('admin.especies_lista') }}">Espécies</a>
-        <a href="{{ url_for('admin.tags_lista') }}">Tags</a>
-        <a href="{{ url_for('admin.usuarios_lista') }}">Usuários</a>
-        <a href="{{ url_for('auth.alterar_senha') }}">Minha senha</a>
-        <form method="post" action="{{ url_for('auth.logout') }}" style="display:inline">
-          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <button type="submit">Sair ({{ usuario_atual.username }})</button>
-        </form>
-      {% else %}
-        <a href="{{ url_for('auth.login') }}">Entrar</a>
-      {% endif %}
-    </nav>
+  <!-- Barra de Navegação Superior -->
+  <header class="navbar navbar-expand-lg navbar-dark bg-success shadow-sm mb-4">
+    <div class="container">
+      <a class="navbar-brand fw-bold" href="{{ url_for('main.index') }}">
+        <i class="bi bi-shield-shaded me-1"></i> Ninhos Digitais
+      </a>
+      
+      <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Alternar navegação">
+        <span class="navbar-toggler-icon"></span>
+      </button>
+
+      <div class="collapse navbar-collapse justify-content-end" id="navbarNav">
+        <nav class="navbar-nav align-items-lg-center gap-2">
+          {% if usuario_atual %}
+            <a class="nav-link text-white" href="{{ url_for('admin.especies_lista') }}">Espécies</a>
+            <a class="nav-link text-white" href="{{ url_for('admin.tags_lista') }}">Tags</a>
+            <a class="nav-link text-white" href="{{ url_for('admin.usuarios_lista') }}">Usuários</a>
+            <a class="nav-link text-white" href="{{ url_for('auth.alterar_senha') }}">Minha senha</a>
+            
+            <form method="post" action="{{ url_for('auth.logout') }}" class="d-inline ms-lg-2">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button type="submit" class="btn btn-outline-light btn-sm">
+                Sair ({{ usuario_atual.username }})
+              </button>
+            </form>
+          {% else %}
+            <a class="btn btn-light btn-sm text-success fw-semibold px-3" href="{{ url_for('auth.login') }}">
+              <i class="bi bi-box-arrow-in-right me-1"></i> Entrar
+            </a>
+          {% endif %}
+        </nav>
+      </div>
+    </div>
   </header>
 
-  {% with mensagens = get_flashed_messages(with_categories=true) %}
-    {% if mensagens %}
-      <ul>
-        {% for categoria, texto in mensagens %}
-          <li class="{{ categoria }}">{{ texto }}</li>
-        {% endfor %}
-      </ul>
-    {% endif %}
-  {% endwith %}
+  <!-- Mensagens Flash (Alertas) -->
+  <div class="container">
+    {% with mensagens = get_flashed_messages(with_categories=true) %}
+      {% if mensagens %}
+        <div class="row justify-content-center">
+          <div class="col-lg-10">
+            {% for categoria, texto in mensagens %}
+              <div class="alert alert-{{ 'danger' if categoria == 'erro' else 'success' }} alert-dismissible fade show shadow-sm" role="alert">
+                {{ texto }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Fechar"></button>
+              </div>
+            {% endfor %}
+          </div>
+        </div>
+      {% endif %}
+    {% endwith %}
+  </div>
 
-  <main>
+  <!-- Conteúdo Principal -->
+  <main class="container my-3 flex-fill">
     {% block content %}{% endblock %}
   </main>
 
-  <footer>
-    <p>Cuide dos animais: não alimente nem toque nos recintos.</p>
+  <!-- Rodapé -->
+  <footer class="bg-white text-center text-muted py-4 mt-auto border-top">
+    <div class="container">
+      <p class="mb-0 small"><i class="bi bi-info-circle me-1"></i> Cuide dos animais: não alimente nem toque nos recintos.</p>
+    </div>
   </footer>
+
+  <!-- Bootstrap 5 JS Bundle CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>

@@ -1,8 +1,39 @@
 {% extends "base.html" %}
 
-{% block title %}Ninhos Digitais{% endblock %}
+{% block title %}Em breve · Ninhos Digitais{% endblock %}
 
 {% block content %}
-<h1>Em breve</h1>
-<p>Este recinto ainda não tem informações cadastradas.</p>
+<div class="row justify-content-center align-items-center py-4 my-auto" style="min-height: 60vh;">
+    <div class="col-12 col-md-8 col-lg-6 text-center">
+        
+        <!-- Cartão de Informação "Em breve" -->
+        <div class="card border-0 shadow-sm rounded-4 bg-white p-4 p-sm-5">
+            <div class="card-body">
+                
+                <!-- Ícone de Destaque -->
+                <div class="p-4 rounded-circle bg-warning-subtle d-inline-block text-warning-emphasis mb-4">
+                    <i class="bi bi-clock-history display-3"></i>
+                </div>
+
+                <!-- Título e Mensagem -->
+                <h1 class="h2 fw-bold text-dark mb-3">Em breve</h1>
+                <p class="lead text-secondary mb-4">
+                    Este recinto ainda não tem informações cadastradas no nosso sistema.
+                </p>
+
+                <!-- Aviso / Instrução -->
+                <div class="alert alert-light border rounded-3 p-3 text-muted small mb-4">
+                    <i class="bi bi-info-circle me-1"></i> Estamos trabalhando para disponibilizar os dados desta espécie o mais rápido possível.
+                </div>
+
+                <!-- Botão para voltar ao início -->
+                <a href="{{ url_for('main.index') }}" class="btn btn-success btn-lg fw-semibold px-4 shadow-sm">
+                    <i class="bi bi-house-door me-2"></i> Ir para a página inicial
+                </a>
+
+            </div>
+        </div>
+
+    </div>
+</div>
 {% endblock %}
