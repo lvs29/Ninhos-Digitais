@@ -3,43 +3,186 @@
 {% block title %}{{ 'Nova espécie' if novo else 'Editar espécie' }} · Ninhos Digitais{% endblock %}
 
 {% block content %}
-<h1>{{ 'Cadastrar espécie' if novo else 'Editar espécie' }}</h1>
+<div class="row justify-content-center my-4">
+    <div class="col-12 col-md-10 col-lg-8">
 
-<form method="post">
-  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-  <p>
-    <label>Nome comum<br>
-      <input type="text" name="nome" value="{{ e.nome }}" required>
-    </label>
-  </p>
-  <p>
-    <label>Nome científico<br>
-      <input type="text" name="nome_cientifico" value="{{ e.nome_cientifico }}" required>
-    </label>
-  </p>
-  <p>
-    <label>Distribuição geográfica<br>
-      <textarea name="distribuicao_geografica" rows="4" cols="50" required>{{ e.distribuicao_geografica }}</textarea>
-    </label>
-  </p>
-  <p>
-    <label>
-      <input type="checkbox" name="ameacada" {{ 'checked' if e.ameacada }}>
-      Espécie ameaçada de extinção
-    </label>
-  </p>
-  <p>
-    <label>Tag<br>
-      <select name="tag_id">
-        <option value="">— Nenhuma —</option>
-        {% for t in tags %}
-          <option value="{{ t.id }}" {{ 'selected' if tag_id_atual == t.id|string }}>{{ t.nome }}</option>
-        {% endfor %}
-      </select>
-    </label>
-    <br><small>Só aparecem tags livres (e a tag atual desta espécie).</small>
-  </p>
-  <button type="submit">Salvar</button>
-  <a href="{{ url_for('admin.especies_lista') }}">Cancelar</a>
-</form>
+        <!-- Cabeçalho -->
+        <div class="mb-4">
+            <a href="{{ url_for('admin.especies_lista') }}" class="text-decoration-none text-secondary small">
+                <i class="bi bi-arrow-left me-1"></i> Voltar para espécies
+            </a>
+            <h1 class="h3 fw-bold text-dark mt-2 mb-1">
+                <i class="bi bi-tree me-2 text-success"></i>{{ 'Cadastrar espécie' if novo else 'Editar espécie' }}
+            </h1>
+            <p class="text-secondary small mb-0">
+                {{ 'Preencha os dados da nova espécie' if novo else 'Atualize os dados da espécie' }}
+            </p>
+        </div>
+
+        <form method="post">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+            <!-- Informações obrigatórias -->
+            <div class="card border-0 shadow-sm rounded-4 bg-white mb-4">
+                <div class="card-body p-4">
+                    <h2 class="h6 fw-bold text-uppercase text-success mb-3" style="letter-spacing: 0.5px;">
+                        <i class="bi bi-asterisk me-1"></i> Informações obrigatórias
+                    </h2>
+
+                    <div class="mb-3">
+                        <label for="nome" class="form-label fw-semibold text-secondary">Nome comum</label>
+                        <div class="input-group">
+                            <span class="input-group-text bg-light border-end-0 text-secondary"><i class="bi bi-chat-square-text"></i></span>
+                            <input type="text" id="nome" name="nome" value="{{ e.nome }}"
+                                   class="form-control bg-light border-start-0 ps-0" placeholder="Ex.: Onça-pintada" required>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="nome_cientifico" class="form-label fw-semibold text-secondary">Nome científico</label>
+                        <div class="input-group">
+                            <span class="input-group-text bg-light border-end-0 text-secondary"><i class="bi bi-journal-text"></i></span>
+                            <input type="text" id="nome_cientifico" name="nome_cientifico" value="{{ e.nome_cientifico }}"
+                                   class="form-control bg-light border-start-0 ps-0 fst-italic" placeholder="Ex.: Panthera onca" required>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="distribuicao_geografica" class="form-label fw-semibold text-secondary">Distribuição geográfica</label>
+                        <textarea id="distribuicao_geografica" name="distribuicao_geografica" rows="3"
+                                  class="form-control bg-light" placeholder="Onde a espécie vive na natureza" required>{{ e.distribuicao_geografica }}</textarea>
+                    </div>
+
+                    <div>
+                        <label for="categoria_ameaca" class="form-label fw-semibold text-secondary">Categoria de ameaça</label>
+                        <div class="input-group">
+                            <span class="input-group-text bg-light border-end-0 text-secondary"><i class="bi bi-shield-exclamation"></i></span>
+                            <select id="categoria_ameaca" name="categoria_ameaca" class="form-select bg-light border-start-0 ps-0" required>
+                                {% for codigo, nome in categorias.items() %}
+                                    <option value="{{ codigo }}" {{ 'selected' if e.categoria_ameaca == codigo }}>{{ nome }} ({{ codigo }})</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="form-text">Classificação da Lista Vermelha da IUCN. Só CR, EN e VU contam como "ameaçada de extinção".</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Informações opcionais -->
+            <div class="card border-0 shadow-sm rounded-4 bg-white mb-4">
+                <div class="card-body p-4">
+                    <h2 class="h6 fw-bold text-uppercase text-success mb-1" style="letter-spacing: 0.5px;">
+                        <i class="bi bi-plus-circle me-1"></i> Informações opcionais
+                    </h2>
+                    <p class="text-secondary small mb-3">O que ficar em branco não aparece na página pública.</p>
+
+                    <div class="row g-3">
+                        <div class="col-12 col-md-6">
+                            <label for="nome_ingles" class="form-label fw-semibold text-secondary">Nome em inglês</label>
+                            <div class="input-group">
+                                <span class="input-group-text bg-light border-end-0 text-secondary"><i class="bi bi-translate"></i></span>
+                                <input type="text" id="nome_ingles" name="nome_ingles" value="{{ e.nome_ingles or '' }}" maxlength="200"
+                                       class="form-control bg-light border-start-0 ps-0" placeholder="Ex.: Jaguar">
+                            </div>
+                        </div>
+
+                        <div class="col-12 col-md-6">
+                            <label for="nome_espanhol" class="form-label fw-semibold text-secondary">Nome em espanhol</label>
+                            <div class="input-group">
+                                <span class="input-group-text bg-light border-end-0 text-secondary"><i class="bi bi-translate"></i></span>
+                                <input type="text" id="nome_espanhol" name="nome_espanhol" value="{{ e.nome_espanhol or '' }}" maxlength="200"
+                                       class="form-control bg-light border-start-0 ps-0" placeholder="Ex.: Jaguar">
+                            </div>
+                        </div>
+
+                        <div class="col-12">
+                            <label for="tipo_alimentacao" class="form-label fw-semibold text-secondary">Tipo de alimentação</label>
+                            <div class="input-group">
+                                <span class="input-group-text bg-light border-end-0 text-secondary"><i class="bi bi-basket"></i></span>
+                                <input type="text" id="tipo_alimentacao" name="tipo_alimentacao" value="{{ e.tipo_alimentacao or '' }}" maxlength="200"
+                                       list="opcoes-alimentacao" class="form-control bg-light border-start-0 ps-0" placeholder="Escolha ou digite">
+                            </div>
+                            <datalist id="opcoes-alimentacao">
+                                <option value="Carnívoro">
+                                <option value="Herbívoro">
+                                <option value="Onívoro">
+                                <option value="Insetívoro">
+                                <option value="Frugívoro">
+                                <option value="Piscívoro">
+                                <option value="Nectarívoro">
+                                <option value="Detritívoro">
+                            </datalist>
+                        </div>
+
+                        <div class="col-12 col-md-4">
+                            <label for="peso" class="form-label fw-semibold text-secondary">Peso</label>
+                            <div class="input-group">
+                                <span class="input-group-text bg-light border-end-0 text-secondary"><i class="bi bi-speedometer2"></i></span>
+                                <input type="text" id="peso" name="peso" value="{{ e.peso or '' }}" maxlength="200"
+                                       class="form-control bg-light border-start-0 ps-0" placeholder="Ex.: 56 a 96 kg">
+                            </div>
+                        </div>
+
+                        <div class="col-12 col-md-4">
+                            <label for="tamanho" class="form-label fw-semibold text-secondary">Tamanho</label>
+                            <div class="input-group">
+                                <span class="input-group-text bg-light border-end-0 text-secondary"><i class="bi bi-rulers"></i></span>
+                                <input type="text" id="tamanho" name="tamanho" value="{{ e.tamanho or '' }}" maxlength="200"
+                                       class="form-control bg-light border-start-0 ps-0" placeholder="Ex.: até 1,85 m">
+                            </div>
+                        </div>
+
+                        <div class="col-12 col-md-4">
+                            <label for="longevidade" class="form-label fw-semibold text-secondary">Longevidade</label>
+                            <div class="input-group">
+                                <span class="input-group-text bg-light border-end-0 text-secondary"><i class="bi bi-hourglass-split"></i></span>
+                                <input type="text" id="longevidade" name="longevidade" value="{{ e.longevidade or '' }}" maxlength="200"
+                                       class="form-control bg-light border-start-0 ps-0" placeholder="Ex.: 15 anos">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="form-text mt-2">Informe a unidade junto do valor (kg, m, anos...).</div>
+                </div>
+            </div>
+
+            <!-- Exibição -->
+            <div class="card border-0 shadow-sm rounded-4 bg-white mb-4">
+                <div class="card-body p-4">
+                    <h2 class="h6 fw-bold text-uppercase text-success mb-3" style="letter-spacing: 0.5px;">
+                        <i class="bi bi-display me-1"></i> Exibição
+                    </h2>
+
+                    <div class="mb-3">
+                        <label for="tag_id" class="form-label fw-semibold text-secondary">Tag (viveiro/aquário)</label>
+                        <div class="input-group">
+                            <span class="input-group-text bg-light border-end-0 text-secondary"><i class="bi bi-qr-code"></i></span>
+                            <select id="tag_id" name="tag_id" class="form-select bg-light border-start-0 ps-0">
+                                <option value="">— Nenhuma —</option>
+                                {% for t in tags %}
+                                    <option value="{{ t.id }}" {{ 'selected' if tag_id_atual == t.id|string }}>{{ t.nome }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="form-text">Uma tag comporta várias espécies, mas cada espécie fica em uma só tag.</div>
+                    </div>
+
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" role="switch" id="visivel" name="visivel" {{ 'checked' if e.visivel }}>
+                        <label class="form-check-label fw-semibold text-secondary" for="visivel">Visível na página pública</label>
+                        <div class="form-text mt-0">Desative para esconder a espécie dos visitantes sem apagá-la.</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Botões -->
+            <div class="d-flex flex-column flex-sm-row gap-2 justify-content-end">
+                <a href="{{ url_for('admin.especies_lista') }}" class="btn btn-outline-secondary px-4">Cancelar</a>
+                <button type="submit" class="btn btn-success fw-semibold px-4 shadow-sm">
+                    <i class="bi bi-check-lg me-1"></i> Salvar
+                </button>
+            </div>
+        </form>
+
+    </div>
+</div>
 {% endblock %}

@@ -2,13 +2,12 @@ import os
 import hashlib
 import hmac
 import secrets
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from sqlalchemy import (
     create_engine, Column, Integer, String, Text, ForeignKey,
-    DateTime, Boolean, func,
+    DateTime, Boolean, func, inspect,
 )
-from sqlalchemy import inspect
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import declarative_base, sessionmaker, relationship, Session
 
@@ -17,6 +16,32 @@ DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///database.db")
 engine = create_engine(DATABASE_URL, echo=False)
 SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False)
 Base = declarative_base()
+
+
+# ─── Constantes ───────────────────────────────────────────────────────────────
+
+# Categorias da Lista Vermelha da IUCN (código -> nome em português)
+CATEGORIAS_AMEACA = {
+    "EX": "Extinta",
+    "EW": "Extinta na natureza",
+    "CR": "Criticamente em perigo",
+    "EN": "Em perigo",
+    "VU": "Vulnerável",
+    "NT": "Quase ameaçada",
+    "LC": "Pouco preocupante",
+    "DD": "Dados insuficientes",
+    "NE": "Não avaliada",
+}
+# Pela IUCN, "ameaçada de extinção" = CR, EN ou VU
+CATEGORIAS_AMEACADAS = ("CR", "EN", "VU")
+
+# Campos opcionais da espécie (texto livre; vazio = não informado)
+CAMPOS_OPCIONAIS = (
+    "nome_ingles", "nome_espanhol", "tipo_alimentacao",
+    "peso", "tamanho", "longevidade",
+)
+MAX_OPCIONAL = 200
+MIN_SENHA = 8
 
 
 # ─── Modelos ──────────────────────────────────────────────────────────────────
@@ -45,12 +70,26 @@ class Especie(Base):
     __tablename__ = "especies"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
+
+    # Obrigatórios
     nome = Column(String, nullable=False, unique=True)              # Nome comum
     nome_cientifico = Column(String, nullable=False)                # Nome científico
     distribuicao_geografica = Column(Text, nullable=False)          # Distribuição geográfica
-    ameacada = Column(Boolean, nullable=False, default=False)       # Ameaçada de extinção?
+    categoria_ameaca = Column(String, nullable=False, default="NE") # Categoria IUCN
+
+    # Controle
+    visivel = Column(Boolean, nullable=False, default=True)         # Aparece na página pública?
     criado_em = Column(DateTime, nullable=False, default=datetime.utcnow)
 
+    # Opcionais
+    nome_ingles = Column(String)
+    nome_espanhol = Column(String)
+    tipo_alimentacao = Column(String)
+    peso = Column(String)
+    tamanho = Column(String)
+    longevidade = Column(String)
+
+    # Cada espécie fica em no máximo uma tag (viveiro/aquário)
     vinculo = relationship(
         "Vinculo", back_populates="especie", uselist=False,
         cascade="save-update, merge, delete",
@@ -58,22 +97,29 @@ class Especie(Base):
 
     def to_dict(self):
         tag = self.vinculo.tag if self.vinculo else None
-        return {
+        d = {
             "id": self.id,
             "nome": self.nome,
             "nome_cientifico": self.nome_cientifico,
             "distribuicao_geografica": self.distribuicao_geografica,
-            "ameacada": self.ameacada,
+            "categoria_ameaca": self.categoria_ameaca,
+            "categoria_ameaca_nome": CATEGORIAS_AMEACA.get(self.categoria_ameaca, ""),
+            "ameacada": self.categoria_ameaca in CATEGORIAS_AMEACADAS,
+            "visivel": self.visivel,
             "tag": {"id": tag.id, "nome": tag.nome, "codigo": tag.codigo} if tag else None,
             "criado_em": self.criado_em.isoformat(),
         }
+        for campo in CAMPOS_OPCIONAIS:
+            d[campo] = getattr(self, campo)
+        return d
 
 
 class Tag(Base):
     """
-    Uma tag física (NFC, QR code impresso, etc.).
+    Uma tag física (NFC, QR code impresso, etc.) responsável por um viveiro/aquário.
     O `codigo` é gerado pelo programa e NUNCA muda (já está gravado/impresso).
     O `nome` é só um rótulo editável para identificar a tag (ex.: "Sala 3").
+    Uma tag comporta várias espécies.
     """
     __tablename__ = "tags"
 
@@ -82,38 +128,49 @@ class Tag(Base):
     codigo = Column(String, nullable=False, unique=True)
     criado_em = Column(DateTime, nullable=False, default=datetime.utcnow)
 
-    vinculo = relationship(
-        "Vinculo", back_populates="tag", uselist=False,
+    vinculos = relationship(
+        "Vinculo", back_populates="tag",
         cascade="save-update, merge, delete",
     )
+    acessos = relationship("Acesso", cascade="save-update, merge, delete")
 
     def to_dict(self):
-        especie = self.vinculo.especie if self.vinculo else None
+        especies = sorted((v.especie for v in self.vinculos), key=lambda e: e.nome.lower())
         return {
             "id": self.id,
             "nome": self.nome,
             "codigo": self.codigo,
-            "especie": {"id": especie.id, "nome": especie.nome} if especie else None,
+            "especies": [{"id": e.id, "nome": e.nome} for e in especies],
             "criado_em": self.criado_em.isoformat(),
         }
 
 
 class Vinculo(Base):
-    """Tabela 1:1 entre espécie e tag (cada uma só pode aparecer uma vez)."""
+    """
+    Associação espécie -> tag.
+    especie_id é UNIQUE (uma espécie só fica em uma tag); tag_id NÃO é
+    (uma tag comporta várias espécies).
+    """
     __tablename__ = "vinculos"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     especie_id = Column(Integer, ForeignKey("especies.id"), nullable=False, unique=True)
-    tag_id = Column(Integer, ForeignKey("tags.id"), nullable=False, unique=True)
+    tag_id = Column(Integer, ForeignKey("tags.id"), nullable=False)
 
     especie = relationship("Especie", back_populates="vinculo")
-    tag = relationship("Tag", back_populates="vinculo")
+    tag = relationship("Tag", back_populates="vinculos")
+
+
+class Acesso(Base):
+    """Um acesso à página pública de uma tag (não guarda IP nem dados do visitante)."""
+    __tablename__ = "acessos"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    tag_id = Column(Integer, ForeignKey("tags.id"), nullable=False, index=True)
+    criado_em = Column(DateTime, nullable=False, default=datetime.utcnow, index=True)
 
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
-
-MIN_SENHA = 8
-
 
 def get_db() -> Session:
     return SessionLocal()
@@ -155,6 +212,27 @@ def _limpar(valor, campo: str) -> str:
     if not isinstance(valor, str) or not valor.strip():
         raise ValueError(f"O campo '{campo}' é obrigatório.")
     return valor.strip()
+
+
+def _opcional(valor, campo: str) -> str | None:
+    """Campo de texto opcional: vazio vira None; limita o tamanho."""
+    if valor is None:
+        return None
+    if not isinstance(valor, str):
+        raise ValueError(f"O campo '{campo}' é inválido.")
+    valor = valor.strip()
+    if not valor:
+        return None
+    if len(valor) > MAX_OPCIONAL:
+        raise ValueError(f"O campo '{campo}' deve ter no máximo {MAX_OPCIONAL} caracteres.")
+    return valor
+
+
+def _categoria(valor) -> str:
+    codigo = (valor or "").strip().upper() if isinstance(valor, str) else ""
+    if codigo not in CATEGORIAS_AMEACA:
+        raise ValueError("Categoria de ameaça inválida.")
+    return codigo
 
 
 # ─── Usuários ─────────────────────────────────────────────────────────────────
@@ -246,68 +324,56 @@ def alterar_senha(usuario_id: int, senha_atual: str, nova_senha: str) -> None:
         db.close()
 
 
-# ─── Vínculo espécie <-> tag (1:1, editável dos dois lados) ───────────────────
-
-def _vincular(db: Session, especie: Especie, tag: Tag, lado: str) -> None:
-    """
-    Liga `especie` a `tag`. `lado` diz quem está sendo editado:
-      "especie": troca a tag desta espécie (a tag antiga fica livre);
-      "tag":     troca a espécie desta tag (a espécie antiga fica livre).
-    Nunca "rouba" o par de um terceiro: se o outro lado já estiver ocupado,
-    levanta ValueError e pede para desvincular antes.
-    """
-    atual_esp = db.query(Vinculo).filter_by(especie_id=especie.id).first()
-    atual_tag = db.query(Vinculo).filter_by(tag_id=tag.id).first()
-
-    if atual_esp and atual_tag and atual_esp.id == atual_tag.id:
-        return  # já estão vinculadas
-
-    if lado == "especie":
-        if atual_tag:
-            raise ValueError(
-                f"A tag '{tag.nome}' já está vinculada à espécie "
-                f"'{atual_tag.especie.nome}'. Desvincule-a antes."
-            )
-        if atual_esp:
-            db.delete(atual_esp)
-            db.flush()  # libera a UNIQUE antes de inserir o novo vínculo
-    else:
-        if atual_esp:
-            raise ValueError(
-                f"A espécie '{especie.nome}' já está vinculada à tag "
-                f"'{atual_esp.tag.nome}'. Desvincule-a antes."
-            )
-        if atual_tag:
-            db.delete(atual_tag)
-            db.flush()
-
-    db.add(Vinculo(especie_id=especie.id, tag_id=tag.id))
-
+# ─── Vínculo espécie -> tag (editável dos dois lados) ─────────────────────────
 
 def _definir_tag_da_especie(db: Session, especie: Especie, tag_id: int | None) -> None:
+    """Lado da espécie: troca (ou remove, com None) a tag desta espécie."""
+    atual = db.query(Vinculo).filter_by(especie_id=especie.id).first()
+
     if tag_id is None:
-        atual = db.query(Vinculo).filter_by(especie_id=especie.id).first()
         if atual:
             db.delete(atual)
             db.flush()
         return
+
     tag = db.get(Tag, tag_id)
     if tag is None:
         raise ValueError("Tag não encontrada.")
-    _vincular(db, especie, tag, lado="especie")
+    if atual:
+        if atual.tag_id == tag.id:
+            return
+        db.delete(atual)
+        db.flush()  # libera a UNIQUE de especie_id antes de inserir o novo vínculo
+    db.add(Vinculo(especie_id=especie.id, tag_id=tag.id))
 
 
-def _definir_especie_da_tag(db: Session, tag: Tag, especie_id: int | None) -> None:
-    if especie_id is None:
-        atual = db.query(Vinculo).filter_by(tag_id=tag.id).first()
-        if atual:
-            db.delete(atual)
-            db.flush()
-        return
-    especie = db.get(Especie, especie_id)
-    if especie is None:
-        raise ValueError("Espécie não encontrada.")
-    _vincular(db, especie, tag, lado="tag")
+def _definir_especies_da_tag(db: Session, tag: Tag, especie_ids) -> None:
+    """
+    Lado da tag: define exatamente quais espécies ficam nesta tag.
+    Espécies que não estão na lista saem da tag. Nunca "rouba" uma espécie que
+    já está em OUTRA tag: nesse caso levanta ValueError e pede para removê-la de lá.
+    """
+    novos = set(especie_ids or [])
+    atuais = {v.especie_id: v for v in db.query(Vinculo).filter_by(tag_id=tag.id).all()}
+
+    for eid in novos - set(atuais):
+        especie = db.get(Especie, eid)
+        if especie is None:
+            raise ValueError("Espécie não encontrada.")
+        outro = db.query(Vinculo).filter_by(especie_id=eid).first()
+        if outro:
+            raise ValueError(
+                f"A espécie '{especie.nome}' já está na tag '{outro.tag.nome}'. "
+                "Remova-a de lá antes."
+            )
+
+    for eid, vinculo in atuais.items():
+        if eid not in novos:
+            db.delete(vinculo)
+    db.flush()
+
+    for eid in novos - set(atuais):
+        db.add(Vinculo(especie_id=eid, tag_id=tag.id))
 
 
 # ─── Tags ─────────────────────────────────────────────────────────────────────
@@ -319,7 +385,7 @@ def _nome_de_tag_em_uso(db: Session, nome: str, ignorar_id: int | None = None) -
     return q.first() is not None
 
 
-def criar_tag(nome: str, especie_id: int | None = None) -> dict:
+def criar_tag(nome: str, especie_ids: list[int] | None = None) -> dict:
     """Cria a tag com um código gerado pelo programa (fixo para sempre)."""
     nome = _limpar(nome, "nome")
 
@@ -339,8 +405,8 @@ def criar_tag(nome: str, especie_id: int | None = None) -> dict:
         else:
             raise RuntimeError("Não foi possível gerar um código único para a tag.")
 
-        if especie_id is not None:
-            _definir_especie_da_tag(db, tag, especie_id)
+        if especie_ids:
+            _definir_especies_da_tag(db, tag, especie_ids)
         db.commit()
         return tag.to_dict()
     finally:
@@ -366,19 +432,26 @@ def obter_tag_por_codigo(codigo: str) -> dict | None:
 
 
 def listar_tags() -> list[dict]:
+    """Lista as tags (com espécies e estatísticas de acesso) em ordem alfabética."""
     db = get_db()
     try:
-        return [t.to_dict() for t in db.query(Tag).order_by(Tag.nome).all()]
+        tags = [t.to_dict() for t in db.query(Tag).order_by(Tag.nome).all()]
     finally:
         db.close()
+
+    stats = estatisticas_acessos()
+    vazio = {"total": 0, "ultimos_7_dias": 0, "ultimo": None}
+    for t in tags:
+        t["acessos"] = stats.get(t["id"], vazio)
+    return tags
 
 
 def atualizar_tag(tag_id: int, **campos) -> dict | None:
     """
-    Campos aceitos: nome, especie_id (None desvincula).
+    Campos aceitos: nome, especie_ids (lista; define exatamente as espécies da tag).
     O código NÃO pode ser alterado. Retorna a tag atualizada ou None se não existir.
     """
-    permitidos = {"nome", "especie_id"}
+    permitidos = {"nome", "especie_ids"}
     invalidos = set(campos) - permitidos
     if invalidos:
         raise ValueError(f"Campos inválidos: {', '.join(sorted(invalidos))}")
@@ -393,8 +466,8 @@ def atualizar_tag(tag_id: int, **campos) -> dict | None:
             if _nome_de_tag_em_uso(db, nome, ignorar_id=tag.id):
                 raise ValueError(f"Já existe uma tag chamada '{nome}'.")
             tag.nome = nome
-        if "especie_id" in campos:
-            _definir_especie_da_tag(db, tag, campos["especie_id"])
+        if "especie_ids" in campos:
+            _definir_especies_da_tag(db, tag, campos["especie_ids"])
         db.commit()
         return tag.to_dict()
     except IntegrityError as e:
@@ -407,7 +480,7 @@ def atualizar_tag(tag_id: int, **campos) -> dict | None:
 
 
 def remover_tag(tag_id: int) -> bool:
-    """Remove a tag e o vínculo dela (a espécie continua existindo)."""
+    """Remove a tag, os vínculos e o histórico de acessos (as espécies continuam existindo)."""
     db = get_db()
     try:
         tag = db.get(Tag, tag_id)
@@ -426,12 +499,24 @@ def criar_especie(
     nome: str,
     nome_cientifico: str,
     distribuicao_geografica: str,
-    ameacada: bool = False,
+    categoria_ameaca: str = "NE",
+    visivel: bool = True,
     tag_id: int | None = None,
+    **opcionais,
 ) -> dict:
+    """
+    Campos opcionais aceitos em **opcionais: nome_ingles, nome_espanhol,
+    tipo_alimentacao, peso, tamanho, longevidade.
+    """
+    invalidos = set(opcionais) - set(CAMPOS_OPCIONAIS)
+    if invalidos:
+        raise ValueError(f"Campos inválidos: {', '.join(sorted(invalidos))}")
+
     nome = _limpar(nome, "nome")
     nome_cientifico = _limpar(nome_cientifico, "nome_cientifico")
     distribuicao_geografica = _limpar(distribuicao_geografica, "distribuicao_geografica")
+    categoria_ameaca = _categoria(categoria_ameaca)
+    extras = {c: _opcional(opcionais.get(c), c) for c in CAMPOS_OPCIONAIS}
 
     db = get_db()
     try:
@@ -439,7 +524,9 @@ def criar_especie(
             nome=nome,
             nome_cientifico=nome_cientifico,
             distribuicao_geografica=distribuicao_geografica,
-            ameacada=bool(ameacada),
+            categoria_ameaca=categoria_ameaca,
+            visivel=bool(visivel),
+            **extras,
         )
         db.add(especie)
         db.flush()
@@ -465,23 +552,34 @@ def obter_especie(especie_id: int) -> dict | None:
         db.close()
 
 
-def obter_especie_por_codigo(codigo: str) -> dict | None:
-    """Espécie ligada à tag com esse código (None se a tag não existir ou estiver livre)."""
+def listar_especies_por_codigo(codigo: str, apenas_visiveis: bool = True) -> list[dict]:
+    """Espécies da tag com esse código (usada pela página pública)."""
     db = get_db()
     try:
         tag = db.query(Tag).filter_by(codigo=codigo).first()
-        if tag is None or tag.vinculo is None:
-            return None
-        return tag.vinculo.especie.to_dict()
+        if tag is None:
+            return []
+        especies = [v.especie for v in tag.vinculos]
+        if apenas_visiveis:
+            especies = [e for e in especies if e.visivel]
+        especies.sort(key=lambda e: e.nome.lower())
+        return [e.to_dict() for e in especies]
     finally:
         db.close()
 
 
-def listar_especies(busca: str | None = None, ameacada: bool | None = None) -> list[dict]:
+def listar_especies(
+    busca: str | None = None,
+    ameacada: bool | None = None,
+    categoria: str | None = None,
+    visivel: bool | None = None,
+) -> list[dict]:
     """
     Lista espécies em ordem alfabética.
-      busca:    filtra por nome comum ou científico (contém, sem diferenciar maiúsculas)
-      ameacada: True/False filtra pelo status; None traz todas
+      busca:     nome comum, científico, inglês ou espanhol (contém, sem diferenciar maiúsculas)
+      ameacada:  True = só CR/EN/VU; False = todas as outras
+      categoria: código IUCN exato (ex.: "EN")
+      visivel:   True/False filtra pela visibilidade pública
     """
     db = get_db()
     try:
@@ -489,10 +587,19 @@ def listar_especies(busca: str | None = None, ameacada: bool | None = None) -> l
         if busca and busca.strip():
             padrao = f"%{busca.strip()}%"
             q = q.filter(
-                Especie.nome.ilike(padrao) | Especie.nome_cientifico.ilike(padrao)
+                Especie.nome.ilike(padrao)
+                | Especie.nome_cientifico.ilike(padrao)
+                | Especie.nome_ingles.ilike(padrao)
+                | Especie.nome_espanhol.ilike(padrao)
             )
-        if ameacada is not None:
-            q = q.filter(Especie.ameacada == ameacada)
+        if ameacada is True:
+            q = q.filter(Especie.categoria_ameaca.in_(CATEGORIAS_AMEACADAS))
+        elif ameacada is False:
+            q = q.filter(~Especie.categoria_ameaca.in_(CATEGORIAS_AMEACADAS))
+        if categoria:
+            q = q.filter(Especie.categoria_ameaca == _categoria(categoria))
+        if visivel is not None:
+            q = q.filter(Especie.visivel == visivel)
         return [e.to_dict() for e in q.order_by(Especie.nome).all()]
     finally:
         db.close()
@@ -500,10 +607,15 @@ def listar_especies(busca: str | None = None, ameacada: bool | None = None) -> l
 
 def atualizar_especie(especie_id: int, **campos) -> dict | None:
     """
-    Campos aceitos: nome, nome_cientifico, distribuicao_geografica, ameacada,
-    tag_id (None desvincula). Retorna a espécie atualizada ou None se não existir.
+    Campos aceitos: nome, nome_cientifico, distribuicao_geografica, categoria_ameaca,
+    visivel, tag_id (None remove da tag) e os opcionais (nome_ingles, nome_espanhol,
+    tipo_alimentacao, peso, tamanho, longevidade; vazio limpa o campo).
+    Retorna a espécie atualizada ou None se não existir.
     """
-    permitidos = {"nome", "nome_cientifico", "distribuicao_geografica", "ameacada", "tag_id"}
+    permitidos = (
+        {"nome", "nome_cientifico", "distribuicao_geografica",
+         "categoria_ameaca", "visivel", "tag_id"} | set(CAMPOS_OPCIONAIS)
+    )
     invalidos = set(campos) - permitidos
     if invalidos:
         raise ValueError(f"Campos inválidos: {', '.join(sorted(invalidos))}")
@@ -516,7 +628,14 @@ def atualizar_especie(especie_id: int, **campos) -> dict | None:
         for campo, valor in campos.items():
             if campo == "tag_id":
                 continue
-            valor = bool(valor) if campo == "ameacada" else _limpar(valor, campo)
+            if campo == "visivel":
+                valor = bool(valor)
+            elif campo == "categoria_ameaca":
+                valor = _categoria(valor)
+            elif campo in CAMPOS_OPCIONAIS:
+                valor = _opcional(valor, campo)
+            else:
+                valor = _limpar(valor, campo)
             setattr(especie, campo, valor)
         if "tag_id" in campos:
             _definir_tag_da_especie(db, especie, campos["tag_id"])
@@ -532,7 +651,7 @@ def atualizar_especie(especie_id: int, **campos) -> dict | None:
 
 
 def remover_especie(especie_id: int) -> bool:
-    """Remove a espécie e o vínculo dela (a tag continua existindo, livre)."""
+    """Remove a espécie e o vínculo dela (a tag continua existindo)."""
     db = get_db()
     try:
         especie = db.get(Especie, especie_id)
@@ -545,21 +664,60 @@ def remover_especie(especie_id: int) -> bool:
         db.close()
 
 
+# ─── Acessos ──────────────────────────────────────────────────────────────────
+
+def registrar_acesso(tag_id: int) -> None:
+    db = get_db()
+    try:
+        db.add(Acesso(tag_id=tag_id))
+        db.commit()
+    finally:
+        db.close()
+
+
+def estatisticas_acessos() -> dict[int, dict]:
+    """
+    Retorna {tag_id: {"total": n, "ultimos_7_dias": n, "ultimo": "ISO UTC"}}.
+    Tags sem nenhum acesso não aparecem no resultado.
+    """
+    db = get_db()
+    try:
+        limite = datetime.utcnow() - timedelta(days=7)
+        stats: dict[int, dict] = {}
+
+        total = db.query(
+            Acesso.tag_id, func.count(Acesso.id), func.max(Acesso.criado_em)
+        ).group_by(Acesso.tag_id)
+        for tag_id, n, ultimo in total:
+            stats[tag_id] = {"total": n, "ultimos_7_dias": 0, "ultimo": ultimo.isoformat()}
+
+        recentes = db.query(Acesso.tag_id, func.count(Acesso.id)) \
+            .filter(Acesso.criado_em >= limite).group_by(Acesso.tag_id)
+        for tag_id, n in recentes:
+            stats[tag_id]["ultimos_7_dias"] = n
+        return stats
+    finally:
+        db.close()
+
+
 # ─── Init ─────────────────────────────────────────────────────────────────────
 
 def _verificar_esquema():
     """Falha cedo, com instrução clara, se o arquivo do banco for de uma versão antiga."""
     insp = inspect(engine)
     tabelas = set(insp.get_table_names())
-    antigo = "links" in tabelas or (
-        "usuarios" in tabelas
-        and "role" in {c["name"] for c in insp.get_columns("usuarios")}
-    )
+
+    antigo = "links" in tabelas
+    if "usuarios" in tabelas:
+        antigo = antigo or "role" in {c["name"] for c in insp.get_columns("usuarios")}
+    if "especies" in tabelas:
+        antigo = antigo or "ameacada" in {c["name"] for c in insp.get_columns("especies")}
+
     if antigo:
         raise RuntimeError(
-            "O banco de dados é de uma versão antiga (tem a tabela 'links' ou a coluna "
-            "'role'). Apague o arquivo database.db e inicie o programa de novo para "
-            "recriá-lo. Atenção: isso apaga os dados cadastrados."
+            "O banco de dados é de uma versão antiga (esquema desatualizado). "
+            "Apague o arquivo database.db e inicie o programa de novo para recriá-lo. "
+            "Atenção: isso apaga os dados cadastrados."
         )
 
 

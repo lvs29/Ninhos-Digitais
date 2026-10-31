@@ -1,0 +1,99 @@
+{#
+  Cartão de uma espécie (incluído por viveiro.html).
+  Espera: `especie` e `unica` (True quando o recinto tem só uma espécie).
+#}
+{% set cores = {"EX": "dark", "EW": "dark", "CR": "danger", "EN": "danger", "VU": "danger",
+                "NT": "warning", "LC": "success", "DD": "secondary", "NE": "secondary"} %}
+{% set cor = cores.get(especie.categoria_ameaca, "secondary") %}
+{% set detalhes = ([
+  ("bi-basket", "Alimentação", especie.tipo_alimentacao),
+  ("bi-speedometer2", "Peso", especie.peso),
+  ("bi-rulers", "Tamanho", especie.tamanho),
+  ("bi-hourglass-split", "Longevidade", especie.longevidade),
+] | selectattr(2) | list) %}
+
+{% macro linha(icone, rotulo, valor, grande=False) %}
+<div class="d-flex align-items-start">
+    <div class="p-3 rounded-circle bg-light text-success me-3">
+        <i class="bi {{ icone }} {{ 'fs-3' if grande else 'fs-5' }}"></i>
+    </div>
+    <div>
+        <h3 class="h6 text-muted text-uppercase fw-bold mb-1" style="letter-spacing: 0.5px;">{{ rotulo }}</h3>
+        <p class="{{ 'fs-5 fw-medium' if grande else 'fw-medium' }} text-dark mb-0">{{ valor }}</p>
+    </div>
+</div>
+{% endmacro %}
+
+<article id="especie-{{ especie.id }}" class="card border-0 shadow rounded-4 overflow-hidden bg-white mb-4" style="scroll-margin-top: 1rem;">
+
+    <!-- Cabeçalho com cor destacada -->
+    <div class="bg-success text-white p-4 text-center">
+        {% if unica %}
+        <span class="badge bg-white text-success fw-semibold px-3 py-2 rounded-pill mb-2 shadow-sm">
+            <i class="bi bi-qr-code-scan me-1"></i> Recinto do Zoo
+        </span>
+        {% endif %}
+        <{{ 'h1' if unica else 'h2' }} class="{{ 'display-5' if unica else 'display-6' }} fw-bold mb-1">{{ especie.nome }}</{{ 'h1' if unica else 'h2' }}>
+        <p class="fs-5 fst-italic opacity-75 mb-0">{{ especie.nome_cientifico }}</p>
+
+        {% if especie.nome_ingles or especie.nome_espanhol %}
+        <p class="small mt-3 mb-0">
+            {% if especie.nome_ingles %}
+                <span class="badge bg-white bg-opacity-25 me-1">EN</span>{{ especie.nome_ingles }}
+            {% endif %}
+            {% if especie.nome_ingles and especie.nome_espanhol %}<span class="mx-2 opacity-50">|</span>{% endif %}
+            {% if especie.nome_espanhol %}
+                <span class="badge bg-white bg-opacity-25 me-1">ES</span>{{ especie.nome_espanhol }}
+            {% endif %}
+        </p>
+        {% endif %}
+    </div>
+
+    <div class="card-body p-4 p-sm-5">
+
+        <!-- Status de Conservação -->
+        <div class="mb-4 text-center">
+            {% if especie.ameacada %}
+                <div class="alert alert-danger d-inline-flex align-items-center rounded-pill px-4 py-2 border-0 shadow-sm mb-2" role="alert">
+                    <i class="bi bi-exclamation-triangle-fill me-2 fs-5"></i>
+                    <span class="fw-bold">Espécie ameaçada de extinção</span>
+                </div>
+            {% elif especie.categoria_ameaca in ["EX", "EW", "DD", "NE"] %}
+                <div class="alert alert-{{ cor }} d-inline-flex align-items-center rounded-pill px-4 py-2 border-0 shadow-sm mb-2" role="alert">
+                    <i class="bi bi-question-circle-fill me-2 fs-5"></i>
+                    <span class="fw-bold">{{ especie.categoria_ameaca_nome }}</span>
+                </div>
+            {% else %}
+                <div class="alert alert-{{ cor }} d-inline-flex align-items-center rounded-pill px-4 py-2 border-0 shadow-sm mb-2" role="alert">
+                    <i class="bi bi-shield-check me-2 fs-5"></i>
+                    <span class="fw-bold">Não consta como ameaçada</span>
+                </div>
+            {% endif %}
+
+            <p class="text-secondary small mb-0">
+                Lista Vermelha da IUCN:
+                <span class="badge bg-{{ cor }}-subtle text-{{ cor }}-emphasis border border-{{ cor }}-subtle rounded-pill px-2">
+                    {{ especie.categoria_ameaca_nome }} ({{ especie.categoria_ameaca }})
+                </span>
+            </p>
+        </div>
+
+        <hr class="my-4 text-muted opacity-25">
+
+        <!-- Informações Detalhadas -->
+        <div class="mb-3">
+            {{ linha("bi-geo-alt-fill", "Distribuição Geográfica", especie.distribuicao_geografica, grande=True) }}
+        </div>
+
+        {% if detalhes %}
+        <div class="row g-3 mt-1">
+            {% for icone, rotulo, valor in detalhes %}
+            <div class="col-12 col-sm-6">
+                {{ linha(icone, rotulo, valor) }}
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+    </div>
+</article>

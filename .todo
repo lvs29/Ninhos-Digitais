@@ -1,11 +1,12 @@
 Para agora:
-[ ] Adicionar informações opcionais sobre as especies
-[ ] Mais de uma especie por aquario/tag
-[ ] Importar/exportar configuração de tags
-[ ] Adicionar categoria de ameaça da especie
-[ ] Alterar visibilidade pública de uma especie sem apaga-la
-[ ] Contagem de acessos
+[X] Adicionar informações opcionais sobre as especies
+[X] Mais de uma especie por aquario/tag
+[X] Adicionar categoria de ameaça da especie
+[X] Alterar visibilidade pública de uma especie sem apaga-la
+[X] Contagem de acessos
+
 [ ] Campo de imagem para as especies
+[ ] Importar/exportar configuração de tags
 
 Pro futuro:
 [ ] Interface

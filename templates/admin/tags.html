@@ -4,7 +4,7 @@
 {% block content %}
 <div class="row justify-content-center my-4">
     <div class="col-12 col-lg-11">
-        
+
         <!-- Cabeçalho com Título e Botão de Ação -->
         <div class="d-flex flex-column flex-sm-row justify-content-between align-items-sm-center gap-3 mb-4">
             <div>
@@ -29,7 +29,9 @@
                         <tr>
                             <th class="ps-4 py-3">Nome / Recinto</th>
                             <th class="py-3">Código (Fixo)</th>
-                            <th class="py-3">Espécie Vinculada</th>
+                            <th class="py-3">Espécies</th>
+                            <th class="py-3">Acessos</th>
+                            <th class="py-3">Último acesso</th>
                             <th class="py-3">Link Público</th>
                             <th class="pe-4 py-3 text-end">Ações</th>
                         </tr>
@@ -54,16 +56,38 @@
                                 </span>
                             </td>
 
-                            <!-- Espécie -->
+                            <!-- Espécies -->
                             <td>
-                                {% if t.especie %}
-                                    <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill px-3 py-2">
-                                        <i class="bi bi-check-circle me-1"></i> {{ t.especie.nome }}
-                                    </span>
+                                {% if t.especies %}
+                                    <div class="d-flex flex-wrap gap-1">
+                                        {% for e in t.especies %}
+                                            <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill px-3 py-2">
+                                                <i class="bi bi-check-circle me-1"></i> {{ e.nome }}
+                                            </span>
+                                        {% endfor %}
+                                    </div>
                                 {% else %}
                                     <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle rounded-pill px-3 py-2">
                                         <i class="bi bi-dash-circle me-1"></i> Livre
                                     </span>
+                                {% endif %}
+                            </td>
+
+                            <!-- Acessos -->
+                            <td>
+                                <div class="fw-semibold text-dark">
+                                    <i class="bi bi-eye me-1 text-success"></i>{{ t.acessos.total }}
+                                    <span class="fw-normal text-secondary small">no total</span>
+                                </div>
+                                <div class="text-secondary small">{{ t.acessos.ultimos_7_dias }} nos últimos 7 dias</div>
+                            </td>
+
+                            <!-- Último acesso -->
+                            <td class="text-secondary small">
+                                {% if t.acessos.ultimo %}
+                                    <i class="bi bi-clock-history me-1"></i>{{ t.acessos.ultimo | data_hora }}
+                                {% else %}
+                                    <span class="text-muted fst-italic">Nenhum ainda</span>
                                 {% endif %}
                             </td>
 
@@ -81,10 +105,10 @@
                                         <i class="bi bi-pencil me-1"></i> Editar
                                     </a>
 
-                                    <form method="post" 
-                                          action="{{ url_for('admin.tag_remover', tag_id=t.id) }}" 
+                                    <form method="post"
+                                          action="{{ url_for('admin.tag_remover', tag_id=t.id) }}"
                                           class="d-inline"
-                                          onsubmit="return confirm('Remover a tag {{ t.nome|e }}? O código dela deixará de funcionar.')">
+                                          onsubmit="return confirm('Remover a tag {{ t.nome|e }}? O código dela deixará de funcionar e o histórico de acessos será apagado.')">
                                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                         <button type="submit" class="btn btn-outline-danger btn-sm rounded-end-3">
                                             <i class="bi bi-trash me-1"></i> Remover
@@ -98,6 +122,9 @@
                 </table>
             </div>
         </div>
+        <p class="text-muted small mt-3 mb-0">
+            <i class="bi bi-info-circle me-1"></i> Acessos de administradores logados não são contados. Horários em UTC.
+        </p>
         {% else %}
         <!-- Estado Vazio -->
         <div class="card border-0 shadow-sm rounded-4 bg-white p-5 text-center">
@@ -106,7 +133,7 @@
                     <i class="bi bi-qr-code display-4 opacity-50"></i>
                 </div>
                 <h2 class="h5 fw-bold text-dark mb-2">Nenhuma tag criada</h2>
-                <p class="text-secondary mb-4">Crie a sua primeira tag para gerar o código e associá-la a uma espécie no zoológico.</p>
+                <p class="text-secondary mb-4">Crie a sua primeira tag para gerar o código e associá-la às espécies de um recinto.</p>
                 <a href="{{ url_for('admin.tag_nova') }}" class="btn btn-success fw-semibold">
                     <i class="bi bi-plus-circle me-1"></i> Criar primeira tag
                 </a>

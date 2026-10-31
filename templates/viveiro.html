@@ -1,0 +1,42 @@
+<!-- templates/viveiro.html -->
+{% extends "base.html" %}
+
+{% block title %}{{ especies[0].nome if especies|length == 1 else 'Espécies do recinto' }} · Ninhos Digitais{% endblock %}
+
+{% block content %}
+{% set unica = especies|length == 1 %}
+<div class="row justify-content-center py-3">
+    <div class="col-12 col-md-9 col-lg-7">
+
+        {% if not unica %}
+        <!-- Cabeçalho do recinto (só quando há mais de uma espécie) -->
+        <div class="text-center mb-4">
+            <span class="badge bg-success-subtle text-success border border-success-subtle fw-semibold px-3 py-2 rounded-pill mb-3">
+                <i class="bi bi-qr-code-scan me-1"></i> Recinto do Zoo
+            </span>
+            <h1 class="h2 fw-bold text-dark mb-1">Espécies deste recinto</h1>
+            <p class="text-secondary mb-3">{{ especies|length }} espécies vivem aqui</p>
+
+            <!-- Atalhos para cada espécie -->
+            <div class="d-flex flex-wrap justify-content-center gap-2">
+                {% for especie in especies %}
+                <a href="#especie-{{ especie.id }}" class="btn btn-outline-success btn-sm rounded-pill px-3">
+                    {{ especie.nome }}
+                </a>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+
+        {% for especie in especies %}
+            {% include "_especie.html" %}
+        {% endfor %}
+
+        <!-- Aviso final -->
+        <p class="text-center text-muted small mb-0">
+            <i class="bi bi-heart-fill text-danger me-1"></i> Respeite os animais: mantenha uma distância segura do recinto.
+        </p>
+
+    </div>
+</div>
+{% endblock %}
