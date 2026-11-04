@@ -29,6 +29,7 @@
             <a class="nav-link text-white" href="{{ url_for('admin.especies_lista') }}">Espécies</a>
             <a class="nav-link text-white" href="{{ url_for('admin.tags_lista') }}">Tags</a>
             <a class="nav-link text-white" href="{{ url_for('admin.usuarios_lista') }}">Usuários</a>
+            <a class="nav-link text-white" href="{{ url_for('configuracoes.index') }}">Configurações</a>
             <a class="nav-link text-white" href="{{ url_for('auth.alterar_senha') }}">Minha senha</a>
             
             <form method="post" action="{{ url_for('auth.logout') }}" class="d-inline ms-lg-2">
@@ -69,13 +70,6 @@
   <main class="container my-3 flex-fill">
     {% block content %}{% endblock %}
   </main>
-
-  <!-- Rodapé -->
-  <footer class="bg-white text-center text-muted py-4 mt-auto border-top">
-    <div class="container">
-      <p class="mb-0 small"><i class="bi bi-info-circle me-1"></i> Cuide dos animais: não alimente nem toque nos recintos.</p>
-    </div>
-  </footer>
 
   <!-- Bootstrap 5 JS Bundle CDN -->
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>

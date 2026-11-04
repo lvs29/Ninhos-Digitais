@@ -4,6 +4,7 @@ from .main import main_bp
 from .especies import especies_bp
 from .admin import admin_bp
 from .auth import auth_bp
+from .configuracoes import config_bp
 
 def register_blueprints(app: Flask) -> None:
     """Registra todos os blueprints da aplicação.
@@ -15,3 +16,4 @@ def register_blueprints(app: Flask) -> None:
     app.register_blueprint(especies_bp)
     app.register_blueprint(admin_bp)
     app.register_blueprint(auth_bp)
+    app.register_blueprint(config_bp)
