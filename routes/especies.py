@@ -19,6 +19,8 @@ def _registrar_acesso(tag_id: int) -> None:
 
 @especies_bp.route("/e/<codigo>")
 def pagina_publica(codigo):
+    if len(codigo) > 64:  # nenhum código válido é maior que isso
+        abort(404)
     tag = db.obter_tag_por_codigo(codigo)
     if not tag:
         abort(404)

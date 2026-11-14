@@ -87,6 +87,11 @@
                                 {% if e.nome_ingles %}
                                     <div class="text-secondary small fw-normal">{{ e.nome_ingles }}</div>
                                 {% endif %}
+                                {% if e.imagens %}
+                                    <span class="badge bg-light text-secondary border fw-normal mt-1">
+                                        <i class="bi bi-images me-1"></i>{{ e.imagens | length }}
+                                    </span>
+                                {% endif %}
                             </td>
 
                             <!-- Nome científico -->
@@ -148,7 +153,8 @@
                                     <form method="post"
                                           action="{{ url_for('admin.especie_remover', especie_id=e.id) }}"
                                           class="d-inline"
-                                          onsubmit="return confirm('Remover {{ e.nome|e }}? Para só escondê-la do público, use o botão de visibilidade.')">
+                                          data-confirmar="Remover {{ e.nome }}? As imagens dela também serão apagadas. Para só escondê-la do público, use o botão de visibilidade."
+                                          onsubmit="return confirm(this.dataset.confirmar)">
                                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                         <button type="submit" class="btn btn-outline-danger btn-sm rounded-end-3">
                                             <i class="bi bi-trash me-1"></i> Remover

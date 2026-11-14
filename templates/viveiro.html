@@ -39,4 +39,15 @@
 
     </div>
 </div>
+<script>
+    // Destaca a miniatura da foto atual em cada galeria
+    document.querySelectorAll('.carousel[id^="galeria-"]').forEach(function (galeria) {
+        galeria.addEventListener('slide.bs.carousel', function (evento) {
+            var secao = galeria.closest('section');
+            secao.querySelectorAll('[data-bs-slide-to]').forEach(function (miniatura, i) {
+                miniatura.classList.toggle('opacity-50', i !== evento.to);
+            });
+        });
+    });
+</script>
 {% endblock %}

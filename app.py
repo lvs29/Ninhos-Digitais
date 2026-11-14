@@ -12,7 +12,8 @@ load_dotenv()
 def create_app() -> Flask:
     app = Flask(__name__)
     app.secret_key = os.environ["SECRET_KEY"]
-    app.config["MAX_CONTENT_LENGTH"] = 20 * 1024 * 1024  # limite dos arquivos enviados (importação)
+    # Limite global de segurança; cada rota tem o seu próprio limite (veja security.py)
+    app.config["MAX_CONTENT_LENGTH"] = 32 * 1024 * 1024
 
     init_db()
     init_security(app)

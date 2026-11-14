@@ -11,6 +11,8 @@ from sqlalchemy import (
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import declarative_base, sessionmaker, relationship, Session
 
+import imagens as armazem
+
 DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///database.db")
 
 engine = create_engine(DATABASE_URL, echo=False)
@@ -42,6 +44,10 @@ CAMPOS_OPCIONAIS = (
 )
 MAX_OPCIONAL = 200
 MIN_SENHA = 8
+MAX_SENHA = 256
+MAX_NOME = 200            # nomes (espécie, tag, usuário) e campos curtos
+MAX_USERNAME = 100
+MAX_TEXTO_LONGO = 5000    # distribuição geográfica
 
 
 # ─── Modelos ──────────────────────────────────────────────────────────────────
@@ -95,6 +101,13 @@ class Especie(Base):
         cascade="save-update, merge, delete",
     )
 
+    # Galeria de imagens (ordenada)
+    imagens = relationship(
+        "Imagem", back_populates="especie",
+        order_by="Imagem.ordem, Imagem.id",
+        cascade="save-update, merge, delete",
+    )
+
     def to_dict(self):
         tag = self.vinculo.tag if self.vinculo else None
         d = {
@@ -107,6 +120,11 @@ class Especie(Base):
             "ameacada": self.categoria_ameaca in CATEGORIAS_AMEACADAS,
             "visivel": self.visivel,
             "tag": {"id": tag.id, "nome": tag.nome, "codigo": tag.codigo} if tag else None,
+            "imagens": [
+                {"id": i.id, "token": i.token, "legenda": i.legenda,
+                 "largura": i.largura, "altura": i.altura, "ordem": i.ordem}
+                for i in self.imagens
+            ],
             "criado_em": self.criado_em.isoformat(),
         }
         for campo in CAMPOS_OPCIONAIS:
@@ -161,6 +179,25 @@ class Vinculo(Base):
     tag = relationship("Tag", back_populates="vinculos")
 
 
+class Imagem(Base):
+    """
+    Uma imagem da galeria de uma espécie. Os arquivos ficam em disco (ver imagens.py)
+    com o nome aleatório `token`; aqui só ficam os metadados.
+    """
+    __tablename__ = "imagens"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    especie_id = Column(Integer, ForeignKey("especies.id"), nullable=False, index=True)
+    token = Column(String(32), nullable=False, unique=True)
+    largura = Column(Integer, nullable=False)   # da versão grande
+    altura = Column(Integer, nullable=False)
+    ordem = Column(Integer, nullable=False, default=0)
+    legenda = Column(String)                    # também usada como texto alternativo
+    criado_em = Column(DateTime, nullable=False, default=datetime.utcnow)
+
+    especie = relationship("Especie", back_populates="imagens")
+
+
 class Acesso(Base):
     """Um acesso à página pública de uma tag (não guarda IP nem dados do visitante)."""
     __tablename__ = "acessos"
@@ -207,11 +244,19 @@ def _e_duplicado(erro: IntegrityError) -> bool:
     return "unique" in msg or "duplicate key" in msg
 
 
-def _limpar(valor, campo: str) -> str:
-    """Valida e normaliza um campo de texto obrigatório."""
+def _limpar(valor, campo: str, max_len: int = MAX_NOME) -> str:
+    """Valida e normaliza um campo de texto obrigatório (com limite de tamanho)."""
     if not isinstance(valor, str) or not valor.strip():
         raise ValueError(f"O campo '{campo}' é obrigatório.")
-    return valor.strip()
+    valor = valor.strip()
+    if len(valor) > max_len:
+        raise ValueError(f"O campo '{campo}' deve ter no máximo {max_len} caracteres.")
+    return valor
+
+
+def _escapar_like(texto: str) -> str:
+    """Escapa % e _ para a busca tratá-los como texto comum."""
+    return texto.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
 def _opcional(valor, campo: str) -> str | None:
@@ -241,8 +286,11 @@ def criar_usuario(
     nome: str, username: str, senha: str, exigir_senha_forte: bool = True,
 ) -> dict:
     nome = _limpar(nome, "nome")
-    username = _limpar(username, "username")
-    senha = _limpar(senha, "senha")
+    username = _limpar(username, "username", MAX_USERNAME)
+    if not isinstance(senha, str) or not senha.strip():
+        raise ValueError("O campo 'senha' é obrigatório.")
+    if len(senha) > MAX_SENHA:
+        raise ValueError(f"A senha deve ter no máximo {MAX_SENHA} caracteres.")
     if exigir_senha_forte and len(senha) < MIN_SENHA:
         raise ValueError(f"A senha deve ter pelo menos {MIN_SENHA} caracteres.")
 
@@ -263,6 +311,10 @@ def criar_usuario(
 
 def autenticar_usuario(username: str, senha: str) -> dict | None:
     """Retorna o usuário (dict) se as credenciais estiverem corretas, senão None."""
+    if (not isinstance(username, str) or not isinstance(senha, str)
+            or len(username) > 200 or len(senha) > 1024):
+        return None  # entrada absurda: nem chega a consultar/derivar hash
+
     db = get_db()
     try:
         usuario = db.query(Usuario).filter_by(username=username).first()
@@ -309,15 +361,23 @@ def remover_usuario(usuario_id: int) -> bool:
         db.close()
 
 
+class SenhaAtualIncorreta(ValueError):
+    """A senha atual informada não confere (usada para limitar tentativas)."""
+
+
 def alterar_senha(usuario_id: int, senha_atual: str, nova_senha: str) -> None:
     """Troca a senha, exigindo a senha atual. Levanta ValueError se algo estiver errado."""
     if not isinstance(nova_senha, str) or len(nova_senha) < MIN_SENHA:
         raise ValueError(f"A nova senha deve ter pelo menos {MIN_SENHA} caracteres.")
+    if len(nova_senha) > MAX_SENHA:
+        raise ValueError(f"A nova senha deve ter no máximo {MAX_SENHA} caracteres.")
+    if not isinstance(senha_atual, str) or len(senha_atual) > 1024:
+        raise SenhaAtualIncorreta("Senha atual incorreta.")
     db = get_db()
     try:
         usuario = db.get(Usuario, usuario_id)
         if not usuario or not verificar_senha(senha_atual, usuario.senha_hash):
-            raise ValueError("Senha atual incorreta.")
+            raise SenhaAtualIncorreta("Senha atual incorreta.")
         usuario.senha_hash = hash_senha(nova_senha)
         db.commit()
     finally:
@@ -502,11 +562,14 @@ def criar_especie(
     categoria_ameaca: str = "NE",
     visivel: bool = True,
     tag_id: int | None = None,
+    imagens: list | None = None,
     **opcionais,
 ) -> dict:
     """
     Campos opcionais aceitos em **opcionais: nome_ingles, nome_espanhol,
     tipo_alimentacao, peso, tamanho, longevidade.
+    imagens: lista de imagens já processadas (imagens.Processada) para a galeria.
+    A espécie e as imagens são gravadas juntas; se algo falhar, nada fica para trás.
     """
     invalidos = set(opcionais) - set(CAMPOS_OPCIONAIS)
     if invalidos:
@@ -514,10 +577,14 @@ def criar_especie(
 
     nome = _limpar(nome, "nome")
     nome_cientifico = _limpar(nome_cientifico, "nome_cientifico")
-    distribuicao_geografica = _limpar(distribuicao_geografica, "distribuicao_geografica")
+    distribuicao_geografica = _limpar(distribuicao_geografica, "distribuicao_geografica", MAX_TEXTO_LONGO)
     categoria_ameaca = _categoria(categoria_ameaca)
     extras = {c: _opcional(opcionais.get(c), c) for c in CAMPOS_OPCIONAIS}
+    novas = list(imagens or [])
+    if len(novas) > armazem.MAX_POR_ESPECIE:
+        raise ValueError(f"Cada espécie pode ter no máximo {armazem.MAX_POR_ESPECIE} imagens.")
 
+    gravados: list[str] = []  # arquivos já escritos (para desfazer se algo falhar)
     db = get_db()
     try:
         especie = Especie(
@@ -532,13 +599,23 @@ def criar_especie(
         db.flush()
         if tag_id is not None:
             _definir_tag_da_especie(db, especie, tag_id)
+        for ordem, proc in enumerate(novas):
+            token = armazem.salvar(proc)
+            gravados.append(token)
+            db.add(Imagem(especie_id=especie.id, token=token,
+                          largura=proc.largura, altura=proc.altura, ordem=ordem))
         db.commit()
+        gravados = []  # gravado com sucesso: nada a desfazer
         return especie.to_dict()
     except IntegrityError as e:
         db.rollback()
+        armazem.apagar(gravados)
         if not _e_duplicado(e):
             raise
         raise ValueError(f"A espécie '{nome}' já está cadastrada.")
+    except Exception:
+        armazem.apagar(gravados)
+        raise
     finally:
         db.close()
 
@@ -585,12 +662,12 @@ def listar_especies(
     try:
         q = db.query(Especie)
         if busca and busca.strip():
-            padrao = f"%{busca.strip()}%"
+            padrao = f"%{_escapar_like(busca.strip()[:100])}%"
             q = q.filter(
-                Especie.nome.ilike(padrao)
-                | Especie.nome_cientifico.ilike(padrao)
-                | Especie.nome_ingles.ilike(padrao)
-                | Especie.nome_espanhol.ilike(padrao)
+                Especie.nome.ilike(padrao, escape="\\")
+                | Especie.nome_cientifico.ilike(padrao, escape="\\")
+                | Especie.nome_ingles.ilike(padrao, escape="\\")
+                | Especie.nome_espanhol.ilike(padrao, escape="\\")
             )
         if ameacada is True:
             q = q.filter(Especie.categoria_ameaca.in_(CATEGORIAS_AMEACADAS))
@@ -605,28 +682,103 @@ def listar_especies(
         db.close()
 
 
+def _ordem(valor) -> int:
+    try:
+        n = int(valor)
+    except (TypeError, ValueError):
+        raise ValueError("A ordem da imagem deve ser um número.")
+    if not 0 <= n <= 999:
+        raise ValueError("A ordem da imagem deve estar entre 0 e 999.")
+    return n
+
+
+def _legenda(valor) -> str | None:
+    if valor is None:
+        return None
+    if not isinstance(valor, str):
+        raise ValueError("Legenda inválida.")
+    valor = valor.strip()
+    if len(valor) > armazem.MAX_LEGENDA:
+        raise ValueError(f"A legenda deve ter no máximo {armazem.MAX_LEGENDA} caracteres.")
+    return valor or None
+
+
+def _atualizar_imagens(db: Session, especie: Especie, campos: dict, gravados: list[str]) -> list[str]:
+    """
+    Aplica remoções, ajustes (ordem/legenda) e novas imagens de uma espécie.
+    Registra em `gravados` os arquivos escritos (para o chamador desfazer em caso de erro)
+    e devolve os tokens removidos (cujos arquivos devem ser apagados após o commit).
+    Ids de imagens que não pertencem à espécie são ignorados.
+    """
+    novas = list(campos.get("imagens_novas") or [])
+    remover = set(campos.get("imagens_remover") or [])
+    ajustes = campos.get("imagens_ajustes") or {}
+    if not (novas or remover or ajustes):
+        return []
+
+    existentes = {i.id: i for i in db.query(Imagem).filter_by(especie_id=especie.id).all()}
+    a_remover = {i: existentes[i] for i in remover if i in existentes}
+    restantes = [im for i, im in existentes.items() if i not in a_remover]
+    if len(restantes) + len(novas) > armazem.MAX_POR_ESPECIE:
+        raise ValueError(
+            f"Cada espécie pode ter no máximo {armazem.MAX_POR_ESPECIE} imagens "
+            f"({len(restantes)} já cadastradas)."
+        )
+
+    # Valida/aplica ajustes ANTES de gravar qualquer arquivo
+    for id_, ajuste in ajustes.items():
+        imagem = existentes.get(id_)
+        if imagem is None or id_ in a_remover:
+            continue
+        if "ordem" in ajuste:
+            imagem.ordem = _ordem(ajuste["ordem"])
+        if "legenda" in ajuste:
+            imagem.legenda = _legenda(ajuste["legenda"])
+
+    tokens_removidos = []
+    for imagem in a_remover.values():
+        tokens_removidos.append(imagem.token)
+        db.delete(imagem)
+
+    proxima = max([im.ordem for im in restantes] or [-1]) + 1
+    for k, proc in enumerate(novas):
+        token = armazem.salvar(proc)
+        gravados.append(token)
+        db.add(Imagem(especie_id=especie.id, token=token,
+                      largura=proc.largura, altura=proc.altura, ordem=proxima + k))
+    return tokens_removidos
+
+
 def atualizar_especie(especie_id: int, **campos) -> dict | None:
     """
     Campos aceitos: nome, nome_cientifico, distribuicao_geografica, categoria_ameaca,
     visivel, tag_id (None remove da tag) e os opcionais (nome_ingles, nome_espanhol,
     tipo_alimentacao, peso, tamanho, longevidade; vazio limpa o campo).
+
+    Galeria (tudo na mesma transação):
+      imagens_novas:   lista de imagens processadas (imagens.Processada)
+      imagens_remover: ids de imagens a remover
+      imagens_ajustes: {id: {"ordem": n, "legenda": "texto"}}
+
     Retorna a espécie atualizada ou None se não existir.
     """
     permitidos = (
         {"nome", "nome_cientifico", "distribuicao_geografica",
-         "categoria_ameaca", "visivel", "tag_id"} | set(CAMPOS_OPCIONAIS)
+         "categoria_ameaca", "visivel", "tag_id",
+         "imagens_novas", "imagens_remover", "imagens_ajustes"} | set(CAMPOS_OPCIONAIS)
     )
     invalidos = set(campos) - permitidos
     if invalidos:
         raise ValueError(f"Campos inválidos: {', '.join(sorted(invalidos))}")
 
+    gravados: list[str] = []
     db = get_db()
     try:
         especie = db.get(Especie, especie_id)
         if not especie:
             return None
         for campo, valor in campos.items():
-            if campo == "tag_id":
+            if campo == "tag_id" or campo.startswith("imagens_"):
                 continue
             if campo == "visivel":
                 valor = bool(valor)
@@ -634,32 +786,60 @@ def atualizar_especie(especie_id: int, **campos) -> dict | None:
                 valor = _categoria(valor)
             elif campo in CAMPOS_OPCIONAIS:
                 valor = _opcional(valor, campo)
+            elif campo == "distribuicao_geografica":
+                valor = _limpar(valor, campo, MAX_TEXTO_LONGO)
             else:
                 valor = _limpar(valor, campo)
             setattr(especie, campo, valor)
         if "tag_id" in campos:
             _definir_tag_da_especie(db, especie, campos["tag_id"])
+        removidos = _atualizar_imagens(db, especie, campos, gravados)
         db.commit()
+        gravados = []
+        armazem.apagar(removidos)  # só depois do commit
         return especie.to_dict()
     except IntegrityError as e:
         db.rollback()
+        armazem.apagar(gravados)
         if not _e_duplicado(e):
             raise
         raise ValueError("Já existe uma espécie com esse nome.")
+    except Exception:
+        armazem.apagar(gravados)
+        raise
     finally:
         db.close()
 
 
 def remover_especie(especie_id: int) -> bool:
-    """Remove a espécie e o vínculo dela (a tag continua existindo)."""
+    """Remove a espécie, o vínculo e as imagens dela (a tag continua existindo)."""
     db = get_db()
     try:
         especie = db.get(Especie, especie_id)
         if not especie:
             return False
+        tokens = [im.token for im in especie.imagens]
         db.delete(especie)
         db.commit()
+        armazem.apagar(tokens)  # só depois do commit
         return True
+    finally:
+        db.close()
+
+
+def imagem_visivel(token: str) -> bool | None:
+    """
+    Usada ao servir imagens: True/False conforme a espécie dona da imagem esteja
+    visível ao público, ou None se não existir imagem com esse token.
+    """
+    db = get_db()
+    try:
+        linha = (
+            db.query(Especie.visivel).select_from(Imagem)
+            .join(Especie, Especie.id == Imagem.especie_id)
+            .filter(Imagem.token == token).first()
+        )
+        return None if linha is None else bool(linha[0])
     finally:
         db.close()
 

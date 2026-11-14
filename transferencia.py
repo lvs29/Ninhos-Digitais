@@ -37,6 +37,7 @@ log = logging.getLogger(__name__)
 FORMATO = "ninhos-digitais"
 VERSAO = 1
 MAX_ERROS = 50  # erros detalhados mostrados por arquivo
+MAX_ITENS = 200_000  # itens por arquivo importado
 
 # A ordem aqui é a ordem de importação (quem é referenciado vem primeiro).
 TIPOS = {
@@ -72,8 +73,8 @@ TIPOS = {
     },
 }
 
-RE_CODIGO = re.compile(r"^[A-Za-z0-9_-]{6,64}$")             # mesmo alfabeto de token_urlsafe
-RE_HASH = re.compile(r"^[0-9a-f]{32}\$[0-9a-f]{64}$")        # salt(16 bytes)$pbkdf2-sha256
+RE_CODIGO = re.compile(r"[A-Za-z0-9_-]{6,64}")               # mesmo alfabeto de token_urlsafe (use fullmatch)
+RE_HASH = re.compile(r"[0-9a-f]{32}\$[0-9a-f]{64}")          # salt(16 bytes)$pbkdf2-sha256 (use fullmatch)
 
 
 # ═════════════════════════════ Exportação ═════════════════════════════
@@ -249,6 +250,9 @@ def _ler_envelope(conteudo: bytes):
     if not isinstance(itens, list):
         erros.add("O campo 'itens' deve ser uma lista.")
         return None, None, erros
+    if len(itens) > MAX_ITENS:
+        erros.add(f"Itens demais no arquivo (máximo {MAX_ITENS}).")
+        return None, None, erros
     return tipo, itens, erros
 
 
@@ -343,7 +347,7 @@ def _planejar_tags(sess, itens, ctx, erros):
         antes = erros.total
         nome = _texto(item, "nome", 200, pref, erros)
         codigo = item["codigo"]
-        if not isinstance(codigo, str) or not RE_CODIGO.match(codigo):
+        if not isinstance(codigo, str) or not RE_CODIGO.fullmatch(codigo):
             erros.add(f"{pref}: 'codigo' deve ter de 6 a 64 caracteres (letras, números, '-' ou '_').")
         if erros.total > antes:
             continue
@@ -459,7 +463,7 @@ def _planejar_usuarios(sess, itens, ctx, erros):
         username = _texto(item, "username", 100, pref, erros)
         nome = _texto(item, "nome", 200, pref, erros)
         senha_hash = item["senha_hash"]
-        if not isinstance(senha_hash, str) or not RE_HASH.match(senha_hash):
+        if not isinstance(senha_hash, str) or not RE_HASH.fullmatch(senha_hash):
             erros.add(f"{pref}: 'senha_hash' não está no formato esperado.")
         if erros.total > antes:
             continue

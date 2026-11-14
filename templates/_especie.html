@@ -49,6 +49,59 @@
         {% endif %}
     </div>
 
+
+    {% if especie.imagens %}
+    <!-- Galeria de fotos -->
+    {% set gid = "galeria-%d" % especie.id %}
+    {% set total = especie.imagens | length %}
+    <section class="bg-dark" aria-label="Galeria de fotos de {{ especie.nome }}">
+        <div id="{{ gid }}" class="carousel slide" data-bs-interval="false" data-bs-touch="true">
+            <div class="carousel-inner">
+                {% for img in especie.imagens %}
+                <div class="carousel-item {{ 'active' if loop.first }}">
+                    <div class="ratio ratio-4x3">
+                        <img src="{{ url_for('midia.arquivo', token=img.token, tamanho='g') }}"
+                             class="d-block w-100 h-100" style="object-fit: contain;"
+                             width="{{ img.largura }}" height="{{ img.altura }}"
+                             alt="{{ img.legenda or ('Foto de ' ~ especie.nome) }}"
+                             {% if not loop.first %}loading="lazy"{% endif %}>
+                    </div>
+                    {% if img.legenda %}
+                    <p class="text-center text-white-50 small mb-0 px-3 py-2">{{ img.legenda }}</p>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+
+            {% if total > 1 %}
+            <button class="carousel-control-prev" type="button" data-bs-target="#{{ gid }}" data-bs-slide="prev">
+                <span class="carousel-control-prev-icon" aria-hidden="true"></span>
+                <span class="visually-hidden">Foto anterior</span>
+            </button>
+            <button class="carousel-control-next" type="button" data-bs-target="#{{ gid }}" data-bs-slide="next">
+                <span class="carousel-control-next-icon" aria-hidden="true"></span>
+                <span class="visually-hidden">Próxima foto</span>
+            </button>
+            {% endif %}
+        </div>
+
+        {% if total > 1 %}
+        <!-- Miniaturas -->
+        <div class="d-flex gap-2 overflow-auto p-2 border-top border-secondary">
+            {% for img in especie.imagens %}
+            <button type="button" class="btn p-0 border-0 flex-shrink-0 {{ '' if loop.first else 'opacity-50' }}"
+                    data-bs-target="#{{ gid }}" data-bs-slide-to="{{ loop.index0 }}"
+                    aria-label="Ver foto {{ loop.index }} de {{ total }}">
+                <img src="{{ url_for('midia.arquivo', token=img.token, tamanho='m') }}"
+                     class="rounded" style="width: 72px; height: 54px; object-fit: cover;"
+                     width="72" height="54" alt="" loading="lazy">
+            </button>
+            {% endfor %}
+        </div>
+        {% endif %}
+    </section>
+    {% endif %}
+
     <div class="card-body p-4 p-sm-5">
 
         <!-- Status de Conservação -->

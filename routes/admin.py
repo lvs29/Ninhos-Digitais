@@ -1,9 +1,11 @@
+import re
 from datetime import datetime
 
 from flask import Blueprint, abort, flash, g, redirect, render_template, request, url_for
 from werkzeug.routing import BuildError
 
 import db
+import imagens as armazem
 from security import exigir_login
 
 admin_bp = Blueprint("admin", __name__, url_prefix="/admin")
@@ -39,17 +41,24 @@ def _id_opcional(valor: str | None) -> int | None:
     valor = (valor or "").strip()
     if not valor:
         return None
-    try:
-        return int(valor)
-    except ValueError:
-        raise ValueError("Seleção inválida.")
+    return _inteiro(valor)
 
 
-def _ids(valores: list[str]) -> list[int]:
+def _inteiro(valor: str) -> int:
+    """Inteiro positivo de até 32 bits (o que cabe com folga em qualquer id do banco)."""
     try:
-        return [int(v) for v in valores]
-    except ValueError:
+        n = int(valor)
+    except (TypeError, ValueError):
         raise ValueError("Seleção inválida.")
+    if not 0 < n <= 2147483647:
+        raise ValueError("Seleção inválida.")
+    return n
+
+
+def _ids(valores: list[str], maximo: int = 2000) -> list[int]:
+    if len(valores) > maximo:
+        raise ValueError("Seleção inválida.")
+    return [_inteiro(v) for v in valores]
 
 
 @admin_bp.route("/")
@@ -60,13 +69,50 @@ def index():
 # ─── Espécies ─────────────────────────────────────────────────────────────────
 
 def _form_especie(valores, novo, especie_id=None):
+    imagens = []
+    if especie_id is not None:
+        atual = db.obter_especie(especie_id)
+        imagens = atual["imagens"] if atual else []
     return render_template(
         "admin/especie_form.html",
         especie=valores, novo=novo,
         categorias=db.CATEGORIAS_AMEACA,
         tags=db.listar_tags(),
         tag_id_atual=str(valores.get("tag_id") or ""),
+        imagens=imagens,
+        limites={
+            "por_envio": armazem.MAX_POR_ENVIO,
+            "mb": armazem.MAX_BYTES // (1024 * 1024),
+            "por_especie": armazem.MAX_POR_ESPECIE,
+            "restantes": max(0, armazem.MAX_POR_ESPECIE - len(imagens)),
+            "legenda": armazem.MAX_LEGENDA,
+        },
     )
+
+
+RE_AJUSTE_IMAGEM = re.compile(r"(ordem|legenda)_(\d{1,10})")
+
+
+def _galeria_enviada() -> tuple[list[int], dict[int, dict]]:
+    """
+    Lê do formulário de edição as imagens marcadas para remover e os ajustes de
+    ordem/legenda (campos ordem_<id> e legenda_<id>). O banco ignora ids que não
+    pertencem à espécie.
+    """
+    remover = _ids(request.form.getlist("remover_imagens"), maximo=100)
+    ajustes: dict[int, dict] = {}
+    for chave in request.form.keys():
+        achou = RE_AJUSTE_IMAGEM.fullmatch(chave)
+        if not achou:
+            continue
+        campo, id_imagem = achou.group(1), int(achou.group(2))
+        valor = request.form.get(chave, "")
+        if campo == "ordem":
+            if valor.strip():
+                ajustes.setdefault(id_imagem, {})["ordem"] = valor.strip()
+        else:
+            ajustes.setdefault(id_imagem, {})["legenda"] = valor
+    return remover, ajustes
 
 
 def _valores_form_especie() -> dict:
@@ -87,7 +133,7 @@ def _valores_form_especie() -> dict:
 
 @admin_bp.route("/especies")
 def especies_lista():
-    busca = request.args.get("q", "").strip()
+    busca = request.args.get("q", "").strip()[:100]
     categoria = request.args.get("categoria", "")
     visivel = request.args.get("visivel", "")
 
@@ -110,7 +156,8 @@ def especie_nova():
     if request.method == "POST":
         valores = _valores_form_especie()
         try:
-            db.criar_especie(**{**valores, "tag_id": _id_opcional(valores["tag_id"])})
+            novas = armazem.processar_envio(request.files.getlist("imagens"))
+            db.criar_especie(**{**valores, "tag_id": _id_opcional(valores["tag_id"]), "imagens": novas})
         except ValueError as e:
             flash(str(e), "erro")
             return _form_especie(valores, novo=True)
@@ -120,13 +167,17 @@ def especie_nova():
     return _form_especie({"categoria_ameaca": "NE", "visivel": True}, novo=True)
 
 
-@admin_bp.route("/especies/<int:especie_id>/editar", methods=["GET", "POST"])
+@admin_bp.route("/especies/<int(max=2147483647):especie_id>/editar", methods=["GET", "POST"])
 def especie_editar(especie_id):
     if request.method == "POST":
         valores = _valores_form_especie()
         try:
+            novas = armazem.processar_envio(request.files.getlist("imagens"))
+            remover, ajustes = _galeria_enviada()
             atualizada = db.atualizar_especie(
-                especie_id, **{**valores, "tag_id": _id_opcional(valores["tag_id"])}
+                especie_id,
+                **{**valores, "tag_id": _id_opcional(valores["tag_id"]),
+                   "imagens_novas": novas, "imagens_remover": remover, "imagens_ajustes": ajustes},
             )
         except ValueError as e:
             flash(str(e), "erro")
@@ -143,7 +194,7 @@ def especie_editar(especie_id):
     return _form_especie(especie, novo=False, especie_id=especie_id)
 
 
-@admin_bp.route("/especies/<int:especie_id>/visibilidade", methods=["POST"])
+@admin_bp.route("/especies/<int(max=2147483647):especie_id>/visibilidade", methods=["POST"])
 def especie_visibilidade(especie_id):
     """Alterna a visibilidade pública sem apagar a espécie."""
     especie = db.obter_especie(especie_id)
@@ -158,7 +209,7 @@ def especie_visibilidade(especie_id):
     return redirect(request.referrer or url_for("admin.especies_lista"))
 
 
-@admin_bp.route("/especies/<int:especie_id>/remover", methods=["POST"])
+@admin_bp.route("/especies/<int(max=2147483647):especie_id>/remover", methods=["POST"])
 def especie_remover(especie_id):
     if not db.remover_especie(especie_id):
         abort(404)
@@ -207,7 +258,7 @@ def tag_nova():
     return _form_tag({}, novo=True)
 
 
-@admin_bp.route("/tags/<int:tag_id>/editar", methods=["GET", "POST"])
+@admin_bp.route("/tags/<int(max=2147483647):tag_id>/editar", methods=["GET", "POST"])
 def tag_editar(tag_id):
     tag = db.obter_tag(tag_id)
     if tag is None:
@@ -232,7 +283,7 @@ def tag_editar(tag_id):
     return _form_tag(tag, novo=False, tag_id=tag_id, codigo=tag["codigo"])
 
 
-@admin_bp.route("/tags/<int:tag_id>/remover", methods=["POST"])
+@admin_bp.route("/tags/<int(max=2147483647):tag_id>/remover", methods=["POST"])
 def tag_remover(tag_id):
     if not db.remover_tag(tag_id):
         abort(404)
@@ -265,7 +316,7 @@ def usuario_novo():
     return render_template("admin/usuario_form.html", dados=None)
 
 
-@admin_bp.route("/usuarios/<int:usuario_id>/remover", methods=["POST"])
+@admin_bp.route("/usuarios/<int(max=2147483647):usuario_id>/remover", methods=["POST"])
 def usuario_remover(usuario_id):
     if usuario_id == g.usuario["id"]:
         flash("Você não pode remover a si mesmo.", "erro")

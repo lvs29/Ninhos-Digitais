@@ -17,15 +17,6 @@ def _exigir_login():
     return exigir_login()
 
 
-@config_bp.app_errorhandler(413)
-def _arquivo_grande_demais(_erro):
-    limite_mb = (current_app.config.get("MAX_CONTENT_LENGTH") or 0) // (1024 * 1024)
-    if g.get("usuario"):
-        flash(f"Arquivo grande demais (o limite do envio é {limite_mb} MB).", "erro")
-        return redirect(url_for("configuracoes.index"))
-    return "Arquivo grande demais.", 413
-
-
 def _pagina(resultados=None, simulacao=False):
     return render_template(
         "admin/configuracoes.html",

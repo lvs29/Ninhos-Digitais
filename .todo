@@ -6,8 +6,9 @@
 [X] Importar/exportar configuração de tags
 [X] Interface
 
-[ ] Campo de imagem para as especies
+[X] Campo de imagem para as especies
 [ ] Gerar qrcore/folha de impressão
 [ ] Backups do banco (automaticos)
 [ ] Sistema do quiz
 [ ] Log de auditoria
+[ ] Libras
