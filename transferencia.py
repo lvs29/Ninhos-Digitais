@@ -3,7 +3,7 @@ Exportação e importação dos dados em JSON (um arquivo por tipo de dado).
 
 Formato de cada arquivo:
     {
-      "formato": "ninhos-digitais",
+      "formato": "zoolink",
       "tipo": "especies",            # especies | tags | vinculos | usuarios | acessos
       "versao": 1,
       "exportado_em": "2026-10-31T12:00:00Z",
@@ -34,7 +34,10 @@ from db import (
 
 log = logging.getLogger(__name__)
 
-FORMATO = "ninhos-digitais"
+FORMATO = "zoolink"
+# O projeto antes se chamava "Ninhos Digitais": backups exportados com o nome antigo
+# continuam sendo aceitos na importação (os novos sempre saem como "zoolink").
+FORMATOS_ACEITOS = (FORMATO, "ninhos-digitais")
 VERSAO = 1
 MAX_ERROS = 50  # erros detalhados mostrados por arquivo
 MAX_ITENS = 200_000  # itens por arquivo importado
@@ -143,7 +146,7 @@ def serializar(envelope: dict) -> bytes:
 
 
 def nome_arquivo(tipo: str) -> str:
-    return f"ninhos-digitais_{tipo}_{datetime.now().strftime('%Y-%m-%d')}.json"
+    return f"zoolink_{tipo}_{datetime.now().strftime('%Y-%m-%d')}.json"
 
 
 def exportar_zip() -> tuple[bytes, str]:
@@ -152,7 +155,7 @@ def exportar_zip() -> tuple[bytes, str]:
     with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as z:
         for tipo in TIPOS:
             z.writestr(f"{tipo}.json", serializar(exportar(tipo)))
-    return buffer.getvalue(), f"ninhos-digitais_backup_{datetime.now().strftime('%Y-%m-%d')}.zip"
+    return buffer.getvalue(), f"zoolink_backup_{datetime.now().strftime('%Y-%m-%d')}.zip"
 
 
 def contagens() -> dict[str, int]:
@@ -235,8 +238,8 @@ def _ler_envelope(conteudo: bytes):
         erros.add("JSON com estrutura profunda demais.")
         return None, None, erros
 
-    if not isinstance(dados, dict) or dados.get("formato") != FORMATO:
-        erros.add("Este não é um arquivo exportado pelo Ninhos Digitais.")
+    if not isinstance(dados, dict) or dados.get("formato") not in FORMATOS_ACEITOS:
+        erros.add("Este não é um arquivo exportado pelo Zoolink.")
         return None, None, erros
     tipo = dados.get("tipo")
     if tipo not in TIPOS:
