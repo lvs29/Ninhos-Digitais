@@ -21,3 +21,6 @@ run.sh
 
 # Imagens enviadas pelos administradores
 uploads/
+
+# Claude code
+memory/

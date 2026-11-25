@@ -9,7 +9,7 @@
         <div class="d-flex flex-column flex-sm-row justify-content-between align-items-sm-center gap-3 mb-4">
             <div>
                 <h1 class="h3 fw-bold text-dark mb-1">
-                    <i class="bi bi-qr-code me-2 text-success"></i>Tags & Placas
+                    <i class="bi bi-qr-code me-2 text-success" aria-hidden="true"></i>Tags & Placas
                 </h1>
                 <p class="text-secondary small mb-0">Gerencie os códigos QR e NFC associados aos recintos</p>
             </div>
@@ -91,11 +91,24 @@
                                 {% endif %}
                             </td>
 
-                            <!-- Link Público -->
+                            <!-- Link Público + Botão QR Code -->
                             <td>
-                                <a href="{{ t.url }}" target="_blank" class="btn btn-link btn-sm text-decoration-none p-0 text-success fw-semibold">
-                                    <i class="bi bi-box-arrow-up-right me-1"></i> Abrir link
-                                </a>
+                                <div class="d-inline-flex align-items-center gap-2">
+                                    <a href="{{ t.url }}" target="_blank" class="btn btn-link btn-sm text-decoration-none p-0 text-success fw-semibold">
+                                        <i class="bi bi-box-arrow-up-right me-1" aria-hidden="true"></i> Abrir link
+                                    </a>
+
+                                    <button type="button"
+                                            class="btn btn-outline-success btn-sm rounded-3 py-1 px-2"
+                                            data-bs-toggle="modal"
+                                            data-bs-target="#qrModal"
+                                            data-qr-url="{{ t.url }}"
+                                            data-qr-nome="{{ t.nome }}"
+                                            data-qr-codigo="{{ t.codigo }}"
+                                            aria-label="Gerar QR Code para {{ t.nome }}">
+                                        <i class="bi bi-qr-code" aria-hidden="true"></i> QR Code
+                                    </button>
+                                </div>
                             </td>
 
                             <!-- Ações -->
@@ -144,4 +157,101 @@
 
     </div>
 </div>
+
+<!-- Modal de QR Code -->
+<div class="modal fade" id="qrModal" tabindex="-1" aria-labelledby="qrModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 rounded-4 shadow">
+            <div class="modal-header border-0 pb-0">
+                <div>
+                    <h2 class="modal-title h5 fw-bold text-dark mb-0" id="qrModalLabel">QR Code da Tag</h2>
+                    <p class="text-secondary small mb-0" id="qrModalSubtitulo"></p>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+            </div>
+            <div class="modal-body text-center py-4">
+                <div id="qrContainer" class="d-inline-flex justify-content-center align-items-center p-3 bg-white border rounded-4 shadow-sm mb-3"></div>
+                <p class="small text-muted font-monospace text-break mb-0" id="qrUrlTexto"></p>
+            </div>
+            <div class="modal-footer border-0 pt-0 justify-content-center gap-2 pb-4">
+                <button type="button" class="btn btn-outline-secondary px-4 fw-semibold" data-bs-dismiss="modal">
+                    Fechar
+                </button>
+                <button type="button" id="btnBaixarQr" class="btn btn-success px-4 fw-semibold shadow-sm" disabled>
+                    <i class="bi bi-download me-1" aria-hidden="true"></i> Baixar PNG
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+    const qrModalEl = document.getElementById("qrModal");
+    const qrContainer = document.getElementById("qrContainer");
+    const qrSubtitulo = document.getElementById("qrModalSubtitulo");
+    const qrUrlTexto = document.getElementById("qrUrlTexto");
+    const btnBaixarQr = document.getElementById("btnBaixarQr");
+
+    let nomeArquivoAtual = "qrcode-tag.png";
+
+    function obterImagemDataUrl() {
+        const img = qrContainer.querySelector("img");
+        if (img && img.src && img.src.startsWith("data:image/")) {
+            return img.src;
+        }
+        const canvas = qrContainer.querySelector("canvas");
+        if (canvas) {
+            return canvas.toDataURL("image/png");
+        }
+        return null;
+    }
+
+    qrModalEl.addEventListener("show.bs.modal", function (event) {
+        const trigger = event.relatedTarget;
+        if (!trigger) return;
+
+        const url = trigger.getAttribute("data-qr-url") || "";
+        const nome = trigger.getAttribute("data-qr-nome") || "Tag";
+        const codigo = trigger.getAttribute("data-qr-codigo") || "tag";
+
+        qrSubtitulo.textContent = `${nome} (${codigo})`;
+        qrUrlTexto.textContent = url;
+        nomeArquivoAtual = `qrcode-${codigo.replace(/[^a-zA-Z0-9_-]/g, "_")}.png`;
+
+        qrContainer.innerHTML = "";
+        btnBaixarQr.disabled = true;
+
+        if (typeof QRCode !== "undefined" && url) {
+            new QRCode(qrContainer, {
+                text: url,
+                width: 220,
+                height: 220,
+                colorDark: "#111827",
+                colorLight: "#ffffff",
+                correctLevel: QRCode.CorrectLevel.H
+            });
+
+            setTimeout(() => {
+                if (obterImagemDataUrl()) {
+                    btnBaixarQr.disabled = false;
+                }
+            }, 60);
+        }
+    });
+
+    btnBaixarQr.addEventListener("click", function () {
+        const dataUrl = obterImagemDataUrl();
+        if (!dataUrl) return;
+
+        const link = document.createElement("a");
+        link.href = dataUrl;
+        link.download = nomeArquivoAtual;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    });
+});
+</script>
 {% endblock %}
