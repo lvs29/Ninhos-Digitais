@@ -1,68 +1,63 @@
 {% extends "base.html" %}
-{% block title %}Espécies · Zoolink{% endblock %}
+{% block title %}Espécies · Ninhos Digitais{% endblock %}
 
 {% block content %}
-{% set cores = {"EX": "dark", "EW": "dark", "CR": "danger", "EN": "danger", "VU": "danger",
-                "NT": "warning", "LC": "success", "DD": "secondary", "NE": "secondary"} %}
 <div class="row justify-content-center my-4">
     <div class="col-12 col-lg-11">
 
-        <!-- Cabeçalho com Título e Botão de Ação -->
         <div class="d-flex flex-column flex-sm-row justify-content-between align-items-sm-center gap-3 mb-4">
             <div>
                 <h1 class="h3 fw-bold text-dark mb-1">
-                    <i class="bi bi-tree me-2 text-success"></i>Espécies Cadastradas
+                    <i class="bi bi-tree me-2 text-success" aria-hidden="true"></i>Espécies Cadastradas
                 </h1>
                 <p class="text-secondary small mb-0">Gerencie a fauna cadastrada nos recintos do zoológico</p>
             </div>
             <div>
                 <a href="{{ url_for('admin.especie_nova') }}" class="btn btn-success fw-semibold shadow-sm">
-                    <i class="bi bi-plus-circle me-1"></i> Cadastrar espécie
+                    <i class="bi bi-plus-circle me-1" aria-hidden="true"></i> Cadastrar espécie
                 </a>
             </div>
         </div>
 
-        <!-- Filtros e Busca -->
         <div class="card border-0 shadow-sm rounded-4 mb-4 bg-white p-3">
             <form method="get" class="row g-2 align-items-center">
-                <div class="col-12 col-md-4">
+                <div class="col-12 col-md-5">
                     <div class="input-group">
                         <span class="input-group-text bg-light border-end-0 text-secondary">
-                            <i class="bi bi-search"></i>
+                            <i class="bi bi-search" aria-hidden="true"></i>
                         </span>
                         <input type="search"
                                name="q"
                                value="{{ busca }}"
                                class="form-control bg-light border-start-0 ps-0"
-                               placeholder="Buscar por nome...">
+                               placeholder="Buscar por nome da espécie...">
                     </div>
                 </div>
                 <div class="col-12 col-md-3">
-                    <select name="categoria" class="form-select bg-light" aria-label="Categoria de ameaça">
+                    <select name="categoria" class="form-select bg-light">
                         <option value="" {{ 'selected' if not categoria }}>Todas as categorias</option>
-                        <option value="ameacadas" {{ 'selected' if categoria == 'ameacadas' }}>Ameaçadas (CR, EN, VU)</option>
-                        {% for codigo, nome in categorias.items() %}
-                            <option value="{{ codigo }}" {{ 'selected' if categoria == codigo }}>{{ nome }} ({{ codigo }})</option>
+                        <option value="ameacadas" {{ 'selected' if categoria == 'ameacadas' }}>Ameaçadas (CR/EN/VU)</option>
+                        {% for cod, rotulo in categorias.items() %}
+                            <option value="{{ cod }}" {{ 'selected' if categoria == cod }}>{{ cod }} — {{ rotulo }}</option>
                         {% endfor %}
                     </select>
                 </div>
-                <div class="col-12 col-md-3">
-                    <select name="visivel" class="form-select bg-light" aria-label="Visibilidade">
-                        <option value="" {{ 'selected' if not visivel }}>Visíveis e ocultas</option>
-                        <option value="1" {{ 'selected' if visivel == '1' }}>Só visíveis</option>
-                        <option value="0" {{ 'selected' if visivel == '0' }}>Só ocultas</option>
+                <div class="col-12 col-md-2">
+                    <select name="visivel" class="form-select bg-light">
+                        <option value="" {{ 'selected' if not visivel }}>Visibilidade</option>
+                        <option value="1" {{ 'selected' if visivel == '1' }}>Visíveis</option>
+                        <option value="0" {{ 'selected' if visivel == '0' }}>Ocultas</option>
                     </select>
                 </div>
                 <div class="col-12 col-md-2 d-grid">
                     <button type="submit" class="btn btn-outline-success fw-semibold">
-                        <i class="bi bi-funnel me-1"></i> Filtrar
+                        <i class="bi bi-funnel me-1" aria-hidden="true"></i> Filtrar
                     </button>
                 </div>
             </form>
         </div>
 
         {% if especies %}
-        <!-- Tabela de Espécies -->
         <div class="card border-0 shadow-sm rounded-4 overflow-hidden bg-white">
             <div class="table-responsive">
                 <table class="table table-hover align-middle mb-0">
@@ -71,93 +66,79 @@
                             <th class="ps-4 py-3">Nome comum</th>
                             <th class="py-3">Nome científico</th>
                             <th class="py-3">Distribuição</th>
-                            <th class="py-3">Categoria de ameaça</th>
-                            <th class="py-3">Tag</th>
-                            <th class="py-3">Visibilidade</th>
+                            <th class="py-3">Categoria / Estado</th>
+                            <th class="py-3">Tag Vinculada</th>
+                            <th class="py-3">Link público</th>
                             <th class="pe-4 py-3 text-end">Ações</th>
                         </tr>
                     </thead>
                     <tbody>
                         {% for e in especies %}
-                        {% set cor = cores.get(e.categoria_ameaca, 'secondary') %}
-                        <tr class="{{ '' if e.visivel else 'table-light text-muted' }}">
-                            <!-- Nome comum -->
+                        <tr>
                             <td class="ps-4 fw-semibold text-dark">
                                 {{ e.nome }}
-                                {% if e.nome_ingles %}
-                                    <div class="text-secondary small fw-normal">{{ e.nome_ingles }}</div>
-                                {% endif %}
-                                {% if e.imagens %}
-                                    <span class="badge bg-light text-secondary border fw-normal mt-1">
-                                        <i class="bi bi-images me-1"></i>{{ e.imagens | length }}
-                                    </span>
+                                {% if not e.visivel %}
+                                    <span class="badge bg-secondary-subtle text-secondary ms-1">Oculta</span>
                                 {% endif %}
                             </td>
 
-                            <!-- Nome científico -->
                             <td class="fst-italic text-secondary">
                                 {{ e.nome_cientifico }}
                             </td>
 
-                            <!-- Distribuição geográfica -->
                             <td class="text-secondary small">
-                                <i class="bi bi-geo-alt me-1"></i>{{ e.distribuicao_geografica }}
+                                <i class="bi bi-geo-alt me-1" aria-hidden="true"></i>{{ e.distribuicao_geografica }}
                             </td>
 
-                            <!-- Categoria de ameaça -->
                             <td>
-                                <span class="badge bg-{{ cor }}-subtle text-{{ cor }}-emphasis border border-{{ cor }}-subtle rounded-pill px-3 py-2">
-                                    {% if e.ameacada %}<i class="bi bi-exclamation-triangle-fill me-1"></i>{% endif %}
-                                    {{ e.categoria_ameaca_nome }} ({{ e.categoria_ameaca }})
-                                </span>
+                                {% if e.ameacada %}
+                                    <span class="badge bg-danger-subtle text-danger border border-danger-subtle rounded-pill px-3 py-2">
+                                        <i class="bi bi-exclamation-triangle-fill me-1" aria-hidden="true"></i> {{ e.categoria_ameaca }}
+                                    </span>
+                                {% else %}
+                                    <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill px-3 py-2">
+                                        <i class="bi bi-shield-check me-1" aria-hidden="true"></i> {{ e.categoria_ameaca }}
+                                    </span>
+                                {% endif %}
                             </td>
 
-                            <!-- Tag -->
                             <td>
                                 {% if e.tag %}
                                     <span class="badge bg-light text-dark border font-monospace">
-                                        <i class="bi bi-tag-fill me-1 text-success"></i>{{ e.tag.nome }}
+                                        <i class="bi bi-tag-fill me-1 text-success" aria-hidden="true"></i>{{ e.tag.nome }}
                                     </span>
                                 {% else %}
                                     <span class="text-muted small fst-italic">—</span>
                                 {% endif %}
                             </td>
 
-                            <!-- Visibilidade -->
                             <td>
-                                <form method="post"
-                                      action="{{ url_for('admin.especie_visibilidade', especie_id=e.id) }}"
-                                      class="d-inline">
-                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                                    {% if e.visivel %}
-                                        <button type="submit" class="btn btn-sm btn-outline-success rounded-pill px-3"
-                                                title="Clique para ocultar da página pública">
-                                            <i class="bi bi-eye me-1"></i> Visível <span class="visually-hidden">— clique para ocultar</span>
-                                        </button>
-                                    {% else %}
-                                        <button type="submit" class="btn btn-sm btn-outline-secondary rounded-pill px-3"
-                                                title="Clique para mostrar na página pública">
-                                            <i class="bi bi-eye-slash me-1"></i> Oculta <span class="visually-hidden">— clique para mostrar</span>
-                                        </button>
-                                    {% endif %}
-                                </form>
+                                {% if e.url %}
+                                    <a href="{{ e.url }}" target="_blank" class="btn btn-link btn-sm text-decoration-none p-0 text-success fw-semibold">
+                                        <i class="bi bi-box-arrow-up-right me-1" aria-hidden="true"></i> Ver página
+                                    </a>
+                                {% else %}
+                                    <span class="text-muted small fst-italic">—</span>
+                                {% endif %}
                             </td>
 
-                            <!-- Ações -->
                             <td class="pe-4 text-end">
                                 <div class="btn-group" role="group">
-                                    <a href="{{ url_for('admin.especie_editar', especie_id=e.id) }}" class="btn btn-outline-primary btn-sm rounded-start-3">
-                                        <i class="bi bi-pencil me-1"></i> Editar
+                                    <a href="{{ url_for('admin.especie_quiz', especie_id=e.id) }}" class="btn btn-outline-success btn-sm rounded-start-3">
+                                        <i class="bi bi-patch-question me-1" aria-hidden="true"></i> {% if e.tem_quiz %}Quiz{% else %}+ Quiz{% endif %}
+                                    </a>
+
+                                    <a href="{{ url_for('admin.especie_editar', especie_id=e.id) }}" class="btn btn-outline-primary btn-sm">
+                                        <i class="bi bi-pencil me-1" aria-hidden="true"></i> Editar
                                     </a>
 
                                     <form method="post"
                                           action="{{ url_for('admin.especie_remover', especie_id=e.id) }}"
                                           class="d-inline"
-                                          data-confirmar="Remover {{ e.nome }}? As imagens dela também serão apagadas. Para só escondê-la do público, use o botão de visibilidade."
-                                          onsubmit="return confirm(this.dataset.confirmar)">
+                                          onsubmit="return confirm('Remover {{ e.nome|e }}?')">
                                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                         <button type="submit" class="btn btn-outline-danger btn-sm rounded-end-3">
-                                            <i class="bi bi-trash me-1"></i> Remover
+                                            <i class="bi bi-trash me-1" aria-hidden="true"></i> Remover
                                         </button>
                                     </form>
                                 </div>
@@ -169,16 +150,15 @@
             </div>
         </div>
         {% else %}
-        <!-- Estado Vazio -->
         <div class="card border-0 shadow-sm rounded-4 bg-white p-5 text-center">
             <div class="card-body">
                 <div class="p-3 rounded-circle bg-light d-inline-block text-secondary mb-3">
-                    <i class="bi bi-search display-4 opacity-50"></i>
+                    <i class="bi bi-search display-4 opacity-50" aria-hidden="true"></i>
                 </div>
                 <h2 class="h5 fw-bold text-dark mb-2">Nenhuma espécie encontrada</h2>
                 <p class="text-secondary mb-4">Não foram encontrados resultados para os termos ou filtros selecionados.</p>
                 <a href="{{ url_for('admin.especie_nova') }}" class="btn btn-success fw-semibold">
-                    <i class="bi bi-plus-circle me-1"></i> Cadastrar nova espécie
+                    <i class="bi bi-plus-circle me-1" aria-hidden="true"></i> Cadastrar nova espécie
                 </a>
             </div>
         </div>

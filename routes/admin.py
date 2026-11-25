@@ -1,3 +1,4 @@
+import json
 import re
 from datetime import datetime
 
@@ -9,6 +10,8 @@ import imagens as armazem
 from security import exigir_login
 
 admin_bp = Blueprint("admin", __name__, url_prefix="/admin")
+
+MAX_ALTERNATIVAS_QUIZ = 5
 
 
 @admin_bp.before_request
@@ -59,6 +62,65 @@ def _ids(valores: list[str], maximo: int = 2000) -> list[int]:
     if len(valores) > maximo:
         raise ValueError("Seleção inválida.")
     return [_inteiro(v) for v in valores]
+
+
+def _validar_e_normalizar_quiz(raw_json: str | None) -> dict:
+    """Valida estrutura do quiz: 1+ perguntas, 2 a 5 alternativas por pergunta, exatamente 1 correta."""
+    try:
+        payload = json.loads(raw_json or "{}")
+    except json.JSONDecodeError:
+        raise ValueError("Dados do quiz inválidos.")
+
+    if not isinstance(payload, dict):
+        raise ValueError("Formato do quiz inválido.")
+
+    titulo = str(payload.get("titulo") or "").strip()
+    if len(titulo) > db.MAX_NOME:
+        raise ValueError(f"O título do quiz deve ter no máximo {db.MAX_NOME} caracteres.")
+
+    perguntas_raw = payload.get("perguntas")
+    if not isinstance(perguntas_raw, list) or len(perguntas_raw) == 0:
+        raise ValueError("Adicione pelo menos uma pergunta ao quiz.")
+
+    perguntas_normalizadas = []
+    for idx, p in enumerate(perguntas_raw, start=1):
+        if not isinstance(p, dict):
+            raise ValueError(f"Pergunta {idx} inválida.")
+
+        enunciado = str(p.get("enunciado") or "").strip()
+        if not enunciado:
+            raise ValueError(f"O enunciado da pergunta {idx} é obrigatório.")
+
+        alts_raw = p.get("alternativas")
+        if not isinstance(alts_raw, list) or not (2 <= len(alts_raw) <= MAX_ALTERNATIVAS_QUIZ):
+            raise ValueError(
+                f"A pergunta {idx} deve ter entre 2 e {MAX_ALTERNATIVAS_QUIZ} alternativas."
+            )
+
+        alternativas_normalizadas = []
+        qtd_corretas = 0
+        for a_idx, alt in enumerate(alts_raw, start=1):
+            if not isinstance(alt, dict):
+                raise ValueError(f"Alternativa {a_idx} da pergunta {idx} inválida.")
+            texto = str(alt.get("texto") or "").strip()
+            if not texto:
+                raise ValueError(f"O texto da alternativa {a_idx} da pergunta {idx} é obrigatório.")
+            correta = bool(alt.get("correta"))
+            if correta:
+                qtd_corretas += 1
+            alternativas_normalizadas.append({"texto": texto, "correta": correta})
+
+        if qtd_corretas != 1:
+            raise ValueError(
+                f"A pergunta {idx} deve ter exatamente 1 alternativa correta."
+            )
+
+        perguntas_normalizadas.append({
+            "enunciado": enunciado,
+            "alternativas": alternativas_normalizadas,
+        })
+
+    return {"titulo": titulo, "perguntas": perguntas_normalizadas}
 
 
 @admin_bp.route("/")
@@ -143,9 +205,18 @@ def especies_lista():
     elif categoria in db.CATEGORIAS_AMEACA:
         filtros["categoria"] = categoria
 
+    especies = db.listar_especies(**filtros)
+    for e in especies:
+        if e.get("tag"):
+            e["url"] = _link_publico(e["tag"]["codigo"])
+        elif e.get("tags"):
+            e["url"] = _link_publico(e["tags"][0]["codigo"])
+        else:
+            e["url"] = None
+
     return render_template(
         "admin/especies.html",
-        especies=db.listar_especies(**filtros),
+        especies=especies,
         categorias=db.CATEGORIAS_AMEACA,
         busca=busca, categoria=categoria, visivel=visivel,
     )
@@ -190,7 +261,7 @@ def especie_editar(especie_id):
     especie = db.obter_especie(especie_id)
     if especie is None:
         abort(404)
-    especie["tag_id"] = especie["tag"]["id"] if especie["tag"] else ""
+    especie["tag_id"] = especie["tag"]["id"] if especie.get("tag") else ""
     return _form_especie(especie, novo=False, especie_id=especie_id)
 
 
@@ -217,13 +288,47 @@ def especie_remover(especie_id):
     return redirect(url_for("admin.especies_lista"))
 
 
+@admin_bp.route("/especies/<int(max=2147483647):especie_id>/quiz", methods=["GET", "POST"])
+def especie_quiz(especie_id):
+    especie = db.obter_especie(especie_id)
+    if especie is None:
+        abort(404)
+
+    quiz_atual = db.obter_quiz_especie(especie_id) or {}
+
+    if request.method == "POST":
+        raw_json = request.form.get("quiz_json")
+        try:
+            quiz_validado = _validar_e_normalizar_quiz(raw_json)
+            db.salvar_quiz_especie(especie_id, quiz_validado)
+        except ValueError as e:
+            flash(str(e), "erro")
+            try:
+                rascunho = json.loads(raw_json or "{}")
+            except json.JSONDecodeError:
+                rascunho = quiz_atual
+            return render_template("admin/quiz_form.html", especie=especie, quiz=rascunho)
+        except Exception as e:
+            flash(f"Erro ao salvar quiz no banco: {e}", "erro")
+            try:
+                rascunho = json.loads(raw_json or "{}")
+            except json.JSONDecodeError:
+                rascunho = quiz_atual
+            return render_template("admin/quiz_form.html", especie=especie, quiz=rascunho)
+
+        flash("Quiz salvo com sucesso.", "ok")
+        return redirect(url_for("admin.especies_lista"))
+
+    return render_template("admin/quiz_form.html", especie=especie, quiz=quiz_atual)
+
+
 # ─── Tags (viveiros/aquários) ─────────────────────────────────────────────────
 
 def _form_tag(valores, novo, tag_id=None, codigo=None):
     especies = db.listar_especies()
     for e in especies:
         # Espécie que já está em OUTRA tag não pode ser escolhida aqui
-        e["em_outra_tag"] = e["tag"]["nome"] if e["tag"] and e["tag"]["id"] != tag_id else None
+        e["em_outra_tag"] = e["tag"]["nome"] if e.get("tag") and e["tag"]["id"] != tag_id else None
     return render_template(
         "admin/tag_form.html",
         tag=valores, novo=novo, especies=especies, codigo=codigo,

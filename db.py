@@ -1,4 +1,5 @@
 import os
+import json
 import hashlib
 import hmac
 import secrets
@@ -108,6 +109,12 @@ class Especie(Base):
         cascade="save-update, merge, delete",
     )
 
+    # Quiz vinculado à espécie (1 para 1)
+    quiz = relationship(
+        "QuizEspecie", back_populates="especie", uselist=False,
+        cascade="save-update, merge, delete",
+    )
+
     def to_dict(self):
         tag = self.vinculo.tag if self.vinculo else None
         d = {
@@ -125,11 +132,40 @@ class Especie(Base):
                  "largura": i.largura, "altura": i.altura, "ordem": i.ordem}
                 for i in self.imagens
             ],
+            "tem_quiz": bool(self.quiz),
             "criado_em": self.criado_em.isoformat(),
         }
         for campo in CAMPOS_OPCIONAIS:
             d[campo] = getattr(self, campo)
         return d
+
+
+class QuizEspecie(Base):
+    """Quiz de uma espécie, com perguntas e até 5 alternativas (1 correta por pergunta)."""
+    __tablename__ = "quiz_especies"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    especie_id = Column(Integer, ForeignKey("especies.id"), nullable=False, unique=True, index=True)
+    titulo = Column(String(200), nullable=False, default="")
+    perguntas_json = Column(Text, nullable=False, default="[]")
+    atualizado_em = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    especie = relationship("Especie", back_populates="quiz")
+
+    def to_dict(self):
+        try:
+            perguntas = json.loads(self.perguntas_json or "[]")
+        except (json.JSONDecodeError, TypeError):
+            perguntas = []
+        if not isinstance(perguntas, list):
+            perguntas = []
+        return {
+            "id": self.id,
+            "especie_id": self.especie_id,
+            "titulo": self.titulo or "",
+            "perguntas": perguntas,
+            "atualizado_em": self.atualizado_em.isoformat() if self.atualizado_em else None,
+        }
 
 
 class Tag(Base):
@@ -840,6 +876,51 @@ def imagem_visivel(token: str) -> bool | None:
             .filter(Imagem.token == token).first()
         )
         return None if linha is None else bool(linha[0])
+    finally:
+        db.close()
+
+
+# ─── Quiz por espécie ─────────────────────────────────────────────────────────
+
+def obter_quiz_especie(especie_id: int) -> dict | None:
+    db = get_db()
+    try:
+        quiz = db.query(QuizEspecie).filter_by(especie_id=especie_id).first()
+        return quiz.to_dict() if quiz else None
+    finally:
+        db.close()
+
+
+def salvar_quiz_especie(especie_id: int, quiz_data: dict) -> dict:
+    titulo = (quiz_data.get("titulo") or "").strip()[:MAX_NOME]
+    perguntas = quiz_data.get("perguntas") or []
+    perguntas_json = json.dumps(perguntas, ensure_ascii=False)
+
+    db = get_db()
+    try:
+        especie = db.get(Especie, especie_id)
+        if especie is None:
+            raise ValueError("Espécie não encontrada.")
+
+        quiz = db.query(QuizEspecie).filter_by(especie_id=especie_id).first()
+        if quiz is None:
+            quiz = QuizEspecie(
+                especie_id=especie_id,
+                titulo=titulo,
+                perguntas_json=perguntas_json,
+            )
+            db.add(quiz)
+        else:
+            quiz.titulo = titulo
+            quiz.perguntas_json = perguntas_json
+            quiz.atualizado_em = datetime.utcnow()
+
+        db.commit()
+        db.refresh(quiz)
+        return quiz.to_dict()
+    except Exception:
+        db.rollback()
+        raise
     finally:
         db.close()
 

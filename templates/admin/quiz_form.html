@@ -1,0 +1,328 @@
+{% extends "base.html" %}
+{% set q_data = quiz or {} %}
+{% set titulo_quiz = q_data.titulo if q_data.titulo is defined else "" %}
+{% set perguntas_iniciais = q_data.perguntas if q_data.perguntas is defined and q_data.perguntas else [] %}
+{% block title %}Quiz · {{ especie.nome }} · Ninhos Digitais{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center my-4">
+    <div class="col-12 col-lg-9">
+
+        <div class="card border-0 shadow-sm rounded-4 bg-white">
+            <div class="card-body p-4 p-sm-5">
+
+                <div class="d-flex flex-column flex-sm-row justify-content-between align-items-sm-center gap-3 mb-4 pb-3 border-bottom">
+                    <div class="d-flex align-items-center">
+                        <div class="p-3 rounded-circle bg-success-subtle text-success me-3">
+                            <i class="bi bi-patch-question fs-3" aria-hidden="true"></i>
+                        </div>
+                        <div>
+                            <h1 class="h3 fw-bold text-dark mb-1">Quiz da Espécie</h1>
+                            <p class="text-secondary small mb-0">
+                                Espécie: <strong class="text-dark">{{ especie.nome }}</strong>
+                                <span class="fst-italic">({{ especie.nome_cientifico }})</span>
+                            </p>
+                        </div>
+                    </div>
+
+                    <button type="button" id="btnAddPergunta" class="btn btn-outline-success fw-semibold rounded-3">
+                        <i class="bi bi-plus-circle me-1" aria-hidden="true"></i> Adicionar pergunta
+                    </button>
+                </div>
+
+                <form method="post"
+                      id="quizForm"
+                      data-perguntas-iniciais='{{ perguntas_iniciais | tojson | forceescape }}'
+                      novalidate>
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="hidden" name="quiz_json" id="quizJsonInput">
+
+                    <div class="mb-4">
+                        <label for="quizTitulo" class="form-label fw-semibold text-secondary">Título do quiz</label>
+                        <input type="text"
+                               id="quizTitulo"
+                               class="form-control bg-light"
+                               placeholder="Ex: Desafio sobre {{ especie.nome }}"
+                               value="{{ titulo_quiz }}">
+                    </div>
+
+                    <div id="perguntasContainer" class="d-flex flex-column gap-4 mb-4"></div>
+
+                    <div id="semPerguntasAviso" class="alert alert-light border rounded-4 text-center py-4 mb-4 d-none">
+                        <i class="bi bi-question-circle fs-3 text-secondary d-block mb-2" aria-hidden="true"></i>
+                        <p class="text-secondary mb-2">Nenhuma pergunta adicionada ainda.</p>
+                        <button type="button" id="btnAddPerguntaVazio" class="btn btn-success btn-sm fw-semibold">
+                            <i class="bi bi-plus-circle me-1" aria-hidden="true"></i> Criar primeira pergunta
+                        </button>
+                    </div>
+
+                    <div class="d-flex justify-content-end gap-2 pt-3 border-top">
+                        <a href="{{ url_for('admin.especies_lista') }}" class="btn btn-outline-secondary px-4 fw-semibold">
+                            Cancelar
+                        </a>
+                        <button type="submit" class="btn btn-success px-4 fw-semibold shadow-sm">
+                            <i class="bi bi-check-lg me-1" aria-hidden="true"></i> Salvar quiz
+                        </button>
+                    </div>
+                </form>
+
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+    const MAX_ALTERNATIVAS = 5;
+    const perguntasContainer = document.getElementById("perguntasContainer");
+    const semPerguntasAviso = document.getElementById("semPerguntasAviso");
+    const quizJsonInput = document.getElementById("quizJsonInput");
+    const quizTituloInput = document.getElementById("quizTitulo");
+    const quizForm = document.getElementById("quizForm");
+
+    let dadosIniciais = [];
+    try {
+        const rawData = quizForm.getAttribute("data-perguntas-iniciais") || "[]";
+        dadosIniciais = JSON.parse(rawData);
+    } catch (err) {
+        dadosIniciais = [];
+    }
+
+    function criarAlternativaPadrao(correta, texto) {
+        return {
+            texto: texto || "",
+            correta: Boolean(correta)
+        };
+    }
+
+    function criarPerguntaPadrao() {
+        return {
+            enunciado: "",
+            alternativas: [
+                criarAlternativaPadrao(true, ""),
+                criarAlternativaPadrao(false, "")
+            ]
+        };
+    }
+
+    let perguntas = Array.isArray(dadosIniciais) && dadosIniciais.length > 0
+        ? dadosIniciais.map(function (p) {
+            const altsRaw = Array.isArray(p.alternativas) ? p.alternativas.slice(0, MAX_ALTERNATIVAS) : [];
+            const alts = altsRaw.map(function (a) {
+                return criarAlternativaPadrao(a && a.correta, a && a.texto);
+            });
+            while (alts.length < 2) {
+                alts.push(criarAlternativaPadrao(false, ""));
+            }
+            const temCorreta = alts.some(function (a) { return a.correta; });
+            if (!temCorreta && alts.length > 0) {
+                alts[0].correta = true;
+            }
+            return {
+                enunciado: (p && p.enunciado) || "",
+                alternativas: alts
+            };
+        })
+        : [criarPerguntaPadrao()];
+
+    function atualizarEstadoVazio() {
+        if (perguntas.length === 0) {
+            perguntasContainer.classList.add("d-none");
+            semPerguntasAviso.classList.remove("d-none");
+        } else {
+            perguntasContainer.classList.remove("d-none");
+            semPerguntasAviso.classList.add("d-none");
+        }
+    }
+
+    function renderizar() {
+        atualizarEstadoVazio();
+        perguntasContainer.innerHTML = "";
+
+        perguntas.forEach(function (pergunta, pIdx) {
+            const card = document.createElement("div");
+            card.className = "card border rounded-4 bg-light p-3 p-sm-4";
+
+            const header = document.createElement("div");
+            header.className = "d-flex justify-content-between align-items-center mb-3 pb-2 border-bottom";
+
+            const tituloPergunta = document.createElement("span");
+            tituloPergunta.className = "fw-bold text-dark";
+            tituloPergunta.innerHTML = '<i class="bi bi-list-ol me-1 text-success" aria-hidden="true"></i> Pergunta ' + (pIdx + 1);
+
+            const btnRemoverPergunta = document.createElement("button");
+            btnRemoverPergunta.type = "button";
+            btnRemoverPergunta.className = "btn btn-outline-danger btn-sm rounded-3";
+            btnRemoverPergunta.innerHTML = '<i class="bi bi-trash me-1" aria-hidden="true"></i> Remover';
+            btnRemoverPergunta.addEventListener("click", function () {
+                perguntas.splice(pIdx, 1);
+                renderizar();
+            });
+
+            header.appendChild(tituloPergunta);
+            header.appendChild(btnRemoverPergunta);
+            card.appendChild(header);
+
+            const divEnunciado = document.createElement("div");
+            divEnunciado.className = "mb-3";
+
+            const labelEnunciado = document.createElement("label");
+            labelEnunciado.className = "form-label fw-semibold text-secondary small";
+            labelEnunciado.textContent = "Enunciado da pergunta";
+
+            const inputEnunciado = document.createElement("input");
+            inputEnunciado.type = "text";
+            inputEnunciado.className = "form-control bg-white";
+            inputEnunciado.placeholder = "Ex: Qual é o principal bioma desta espécie?";
+            inputEnunciado.value = pergunta.enunciado;
+            inputEnunciado.required = true;
+            inputEnunciado.addEventListener("input", function (e) {
+                perguntas[pIdx].enunciado = e.target.value;
+            });
+
+            divEnunciado.appendChild(labelEnunciado);
+            divEnunciado.appendChild(inputEnunciado);
+            card.appendChild(divEnunciado);
+
+            const labelAlts = document.createElement("div");
+            labelAlts.className = "d-flex justify-content-between align-items-center mb-2";
+            labelAlts.innerHTML =
+                '<span class="form-label fw-semibold text-secondary small mb-0">' +
+                'Alternativas (' + pergunta.alternativas.length + '/' + MAX_ALTERNATIVAS + ') · Marque a correta' +
+                '</span>';
+            card.appendChild(labelAlts);
+
+            const altsLista = document.createElement("div");
+            altsLista.className = "d-flex flex-column gap-2 mb-3";
+
+            pergunta.alternativas.forEach(function (alt, aIdx) {
+                const row = document.createElement("div");
+                row.className = "input-group";
+
+                const radioWrapper = document.createElement("div");
+                radioWrapper.className = "input-group-text bg-white";
+
+                const radio = document.createElement("input");
+                radio.type = "radio";
+                radio.name = "correta_pergunta_" + pIdx;
+                radio.className = "form-check-input mt-0";
+                radio.checked = Boolean(alt.correta);
+                radio.title = "Marcar como alternativa correta";
+                radio.setAttribute("aria-label", "Alternativa " + (aIdx + 1) + " correta");
+                radio.addEventListener("change", function () {
+                    perguntas[pIdx].alternativas.forEach(function (item, idx) {
+                        item.correta = idx === aIdx;
+                    });
+                });
+
+                radioWrapper.appendChild(radio);
+
+                const inputAlt = document.createElement("input");
+                inputAlt.type = "text";
+                inputAlt.className = "form-control bg-white";
+                inputAlt.placeholder = "Alternativa " + (aIdx + 1);
+                inputAlt.value = alt.texto;
+                inputAlt.required = true;
+                inputAlt.addEventListener("input", function (e) {
+                    perguntas[pIdx].alternativas[aIdx].texto = e.target.value;
+                });
+
+                row.appendChild(radioWrapper);
+                row.appendChild(inputAlt);
+
+                if (pergunta.alternativas.length > 2) {
+                    const btnRemoverAlt = document.createElement("button");
+                    btnRemoverAlt.type = "button";
+                    btnRemoverAlt.className = "btn btn-outline-secondary";
+                    btnRemoverAlt.title = "Remover alternativa";
+                    btnRemoverAlt.setAttribute("aria-label", "Remover alternativa " + (aIdx + 1));
+                    btnRemoverAlt.innerHTML = '<i class="bi bi-x-lg" aria-hidden="true"></i>';
+                    btnRemoverAlt.addEventListener("click", function () {
+                        const removidaEraCorreta = perguntas[pIdx].alternativas[aIdx].correta;
+                        perguntas[pIdx].alternativas.splice(aIdx, 1);
+                        if (removidaEraCorreta && perguntas[pIdx].alternativas.length > 0) {
+                            perguntas[pIdx].alternativas[0].correta = true;
+                        }
+                        renderizar();
+                    });
+                    row.appendChild(btnRemoverAlt);
+                }
+
+                altsLista.appendChild(row);
+            });
+
+            card.appendChild(altsLista);
+
+            if (pergunta.alternativas.length < MAX_ALTERNATIVAS) {
+                const btnAddAlt = document.createElement("button");
+                btnAddAlt.type = "button";
+                btnAddAlt.className = "btn btn-outline-dark btn-sm rounded-3";
+                btnAddAlt.innerHTML = '<i class="bi bi-plus me-1" aria-hidden="true"></i> Adicionar alternativa';
+                btnAddAlt.addEventListener("click", function () {
+                    if (perguntas[pIdx].alternativas.length < MAX_ALTERNATIVAS) {
+                        perguntas[pIdx].alternativas.push(criarAlternativaPadrao(false, ""));
+                        renderizar();
+                    }
+                });
+                card.appendChild(btnAddAlt);
+            }
+
+            perguntasContainer.appendChild(card);
+        });
+    }
+
+    document.getElementById("btnAddPergunta").addEventListener("click", function () {
+        perguntas.push(criarPerguntaPadrao());
+        renderizar();
+    });
+
+    document.getElementById("btnAddPerguntaVazio").addEventListener("click", function () {
+        perguntas.push(criarPerguntaPadrao());
+        renderizar();
+    });
+
+    quizForm.addEventListener("submit", function (event) {
+        if (perguntas.length === 0) {
+            event.preventDefault();
+            alert("Adicione pelo menos uma pergunta antes de salvar o quiz.");
+            return;
+        }
+
+        for (let i = 0; i < perguntas.length; i++) {
+            const p = perguntas[i];
+            if (!p.enunciado.trim()) {
+                event.preventDefault();
+                alert("Preencha o enunciado da pergunta " + (i + 1) + ".");
+                return;
+            }
+            if (p.alternativas.length < 2 || p.alternativas.length > MAX_ALTERNATIVAS) {
+                event.preventDefault();
+                alert("A pergunta " + (i + 1) + " deve ter entre 2 e " + MAX_ALTERNATIVAS + " alternativas.");
+                return;
+            }
+            const corretas = p.alternativas.filter(function (a) { return a.correta; }).length;
+            if (corretas !== 1) {
+                event.preventDefault();
+                alert("A pergunta " + (i + 1) + " deve ter exatamente 1 alternativa correta.");
+                return;
+            }
+            for (let j = 0; j < p.alternativas.length; j++) {
+                if (!p.alternativas[j].texto.trim()) {
+                    event.preventDefault();
+                    alert("Preencha a alternativa " + (j + 1) + " da pergunta " + (i + 1) + ".");
+                    return;
+                }
+            }
+        }
+
+        quizJsonInput.value = JSON.stringify({
+            titulo: quizTituloInput.value.trim(),
+            perguntas: perguntas
+        });
+    });
+
+    renderizar();
+});
+</script>
+{% endblock %}
