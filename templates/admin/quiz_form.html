@@ -58,7 +58,7 @@
 
                     <div class="d-flex justify-content-end gap-2 pt-3 border-top">
                         <a href="{{ url_for('admin.especies_lista') }}" class="btn btn-outline-secondary px-4 fw-semibold">
-                            Cancelar
+                            Voltar
                         </a>
                         <button type="submit" class="btn btn-success px-4 fw-semibold shadow-sm">
                             <i class="bi bi-check-lg me-1" aria-hidden="true"></i> Salvar quiz
@@ -69,11 +69,146 @@
             </div>
         </div>
 
+        {% if stats is defined and stats %}
+        <div class="card border-0 shadow-sm rounded-4 bg-white mt-4">
+            <div class="card-body p-4 p-sm-5">
+
+                <div class="d-flex flex-column flex-sm-row justify-content-between align-items-sm-center gap-3 mb-4 pb-3 border-bottom">
+                    <div class="d-flex align-items-center">
+                        <div class="p-3 rounded-circle bg-primary-subtle text-primary me-3">
+                            <i class="bi bi-bar-chart-line fs-3" aria-hidden="true"></i>
+                        </div>
+                        <div>
+                            <h2 class="h4 fw-bold text-dark mb-1">Estatísticas do Quiz</h2>
+                            <p class="text-secondary small mb-0">
+                                Última resposta: <strong>{{ stats.ultima_resposta | data_hora }}</strong>
+                            </p>
+                        </div>
+                    </div>
+
+                    {% if stats.total_respostas > 0 %}
+                    <form method="post"
+                          action="{{ url_for('admin.especie_quiz_limpar_stats', especie_id=especie.id) }}"
+                          onsubmit="return confirm('Deseja apagar todas as respostas salvas deste quiz?');">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <button type="submit" class="btn btn-outline-danger btn-sm rounded-3">
+                            <i class="bi bi-arrow-counterclockwise me-1" aria-hidden="true"></i> Zerar estatísticas
+                        </button>
+                    </form>
+                    {% endif %}
+                </div>
+
+                {% if stats.total_respostas == 0 %}
+                <div class="alert alert-light border rounded-4 text-center py-4 mb-0">
+                    <i class="bi bi-inbox fs-3 text-secondary d-block mb-2" aria-hidden="true"></i>
+                    <p class="text-secondary mb-0">Nenhuma resposta registrada para este quiz ainda.</p>
+                </div>
+                {% else %}
+
+                <!-- Resumo Geral -->
+                <div class="row g-3 mb-4">
+                    <div class="col-12 col-sm-4">
+                        <div class="p-3 rounded-4 bg-light border h-100">
+                            <span class="text-secondary small fw-semibold d-block mb-1">
+                                <i class="bi bi-people me-1 text-primary" aria-hidden="true"></i> Respostas salvas
+                            </span>
+                            <span class="h3 fw-bold text-dark mb-0">{{ stats.total_respostas }}</span>
+                        </div>
+                    </div>
+
+                    <div class="col-12 col-sm-4">
+                        <div class="p-3 rounded-4 bg-light border h-100">
+                            <span class="text-secondary small fw-semibold d-block mb-1">
+                                <i class="bi bi-check2-circle me-1 text-success" aria-hidden="true"></i> Taxa de acerto
+                            </span>
+                            <span class="h3 fw-bold text-dark mb-0">{{ stats.taxa_acerto_geral }}%</span>
+                            <span class="text-secondary small d-block">
+                                Média de {{ stats.media_acertos }}/{{ stats.total_perguntas }} acertos
+                            </span>
+                        </div>
+                    </div>
+
+                    <div class="col-12 col-sm-4">
+                        <div class="p-3 rounded-4 bg-light border h-100">
+                            <span class="text-secondary small fw-semibold d-block mb-1">
+                                <i class="bi bi-stopwatch me-1 text-warning" aria-hidden="true"></i> Tempo médio
+                            </span>
+                            <span class="h3 fw-bold text-dark mb-0">{{ stats.tempo_medio_s }}s</span>
+                            <span class="text-secondary small d-block">
+                                Mín: {{ stats.tempo_min_s }}s · Máx: {{ stats.tempo_max_s }}s
+                            </span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Detalhamento por Pergunta -->
+                <div class="d-flex flex-column gap-3">
+                    {% for p in stats.perguntas %}
+                    <div class="card border rounded-4 bg-light p-3 p-sm-4">
+                        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+                            <h3 class="h6 fw-bold text-dark mb-0">
+                                {{ loop.index }}. {{ p.enunciado }}
+                            </h3>
+                            <div class="d-flex gap-2 small">
+                                <span class="badge bg-success-subtle text-success-emphasis border border-success-subtle rounded-pill">
+                                    {{ p.taxa_acerto }}% de acerto
+                                </span>
+                                {% if p.tempo_medio_s is not none %}
+                                <span class="badge bg-secondary-subtle text-secondary-emphasis border rounded-pill">
+                                    <i class="bi bi-clock me-1" aria-hidden="true"></i>{{ p.tempo_medio_s }}s
+                                </span>
+                                {% endif %}
+                            </div>
+                        </div>
+
+                        <div class="d-flex flex-column gap-2">
+                            {% for alt in p.alternativas %}
+                            {% set cor_barra = 'bg-success' if alt.correta else ('bg-primary' if alt.mais_marcada else 'bg-secondary') %}
+                            <div class="bg-white p-2 px-3 rounded-3 border {{ 'border-success' if alt.correta }}">
+                                <div class="d-flex justify-content-between align-items-center gap-2 mb-1 small">
+                                    <div class="d-flex align-items-center flex-wrap gap-2">
+                                        <span class="{{ 'fw-bold text-dark' if alt.correta or alt.mais_marcada else 'text-secondary' }}">
+                                            {{ alt.texto }}
+                                        </span>
+                                        {% if alt.correta %}
+                                        <span class="badge bg-success rounded-pill">Correta</span>
+                                        {% endif %}
+                                        {% if alt.mais_marcada %}
+                                        <span class="badge bg-primary rounded-pill">Mais marcada</span>
+                                        {% endif %}
+                                    </div>
+                                    <span class="fw-semibold text-dark text-nowrap">
+                                        {{ alt.votos }} ({{ alt.percentual }}%)
+                                    </span>
+                                </div>
+                                <div class="progress" style="height: 6px;">
+                                    <div class="progress-bar {{ cor_barra }}"
+                                         role="progressbar"
+                                         data-width="{{ alt.percentual }}"
+                                         aria-valuenow="{{ alt.percentual }}"
+                                         aria-valuemin="0"
+                                         aria-valuemax="100"></div>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+
     </div>
 </div>
 
 <script>
 document.addEventListener("DOMContentLoaded", function () {
+    document.querySelectorAll(".progress-bar[data-width]").forEach(function (barra) {
+        barra.style.width = barra.getAttribute("data-width") + "%";
+    });
     const MAX_ALTERNATIVAS = 5;
     const perguntasContainer = document.getElementById("perguntasContainer");
     const semPerguntasAviso = document.getElementById("semPerguntasAviso");

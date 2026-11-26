@@ -295,6 +295,7 @@ def especie_quiz(especie_id):
         abort(404)
 
     quiz_atual = db.obter_quiz_especie(especie_id) or {}
+    stats = db.estatisticas_quiz_especie(especie_id)
 
     if request.method == "POST":
         raw_json = request.form.get("quiz_json")
@@ -307,19 +308,29 @@ def especie_quiz(especie_id):
                 rascunho = json.loads(raw_json or "{}")
             except json.JSONDecodeError:
                 rascunho = quiz_atual
-            return render_template("admin/quiz_form.html", especie=especie, quiz=rascunho)
+            return render_template("admin/quiz_form.html", especie=especie, quiz=rascunho, stats=stats)
         except Exception as e:
             flash(f"Erro ao salvar quiz no banco: {e}", "erro")
             try:
                 rascunho = json.loads(raw_json or "{}")
             except json.JSONDecodeError:
                 rascunho = quiz_atual
-            return render_template("admin/quiz_form.html", especie=especie, quiz=rascunho)
+            return render_template("admin/quiz_form.html", especie=especie, quiz=rascunho, stats=stats)
 
         flash("Quiz salvo com sucesso.", "ok")
-        return redirect(url_for("admin.especies_lista"))
+        return redirect(url_for("admin.especie_quiz", especie_id=especie_id))
 
-    return render_template("admin/quiz_form.html", especie=especie, quiz=quiz_atual)
+    return render_template("admin/quiz_form.html", especie=especie, quiz=quiz_atual, stats=stats)
+
+
+@admin_bp.route("/especies/<int(max=2147483647):especie_id>/quiz/limpar-estatisticas", methods=["POST"])
+def especie_quiz_limpar_stats(especie_id):
+    especie = db.obter_especie(especie_id)
+    if especie is None:
+        abort(404)
+    qtd = db.limpar_respostas_quiz(especie_id)
+    flash(f"Estatísticas zeradas ({qtd} registro(s) removido(s)).", "ok")
+    return redirect(url_for("admin.especie_quiz", especie_id=especie_id))
 
 
 # ─── Tags (viveiros/aquários) ─────────────────────────────────────────────────

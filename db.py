@@ -133,6 +133,7 @@ class Especie(Base):
                 for i in self.imagens
             ],
             "tem_quiz": bool(self.quiz),
+            "quiz": self.quiz.to_dict() if self.quiz else None,
             "criado_em": self.criado_em.isoformat(),
         }
         for campo in CAMPOS_OPCIONAIS:
@@ -151,6 +152,10 @@ class QuizEspecie(Base):
     atualizado_em = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     especie = relationship("Especie", back_populates="quiz")
+    respostas = relationship(
+        "RespostaQuiz", back_populates="quiz",
+        cascade="save-update, merge, delete, delete-orphan",
+    )
 
     def to_dict(self):
         try:
@@ -166,6 +171,21 @@ class QuizEspecie(Base):
             "perguntas": perguntas,
             "atualizado_em": self.atualizado_em.isoformat() if self.atualizado_em else None,
         }
+
+
+class RespostaQuiz(Base):
+    """Tentativa anônima de um visitante no quiz de uma espécie."""
+    __tablename__ = "quiz_respostas"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    quiz_id = Column(Integer, ForeignKey("quiz_especies.id"), nullable=False, index=True)
+    respostas_json = Column(Text, nullable=False, default="[]")
+    acertos = Column(Integer, nullable=False, default=0)
+    total_perguntas = Column(Integer, nullable=False, default=0)
+    tempo_total_ms = Column(Integer, nullable=False, default=0)
+    criado_em = Column(DateTime, nullable=False, default=datetime.utcnow, index=True)
+
+    quiz = relationship("QuizEspecie", back_populates="respostas")
 
 
 class Tag(Base):
@@ -921,6 +941,237 @@ def salvar_quiz_especie(especie_id: int, quiz_data: dict) -> dict:
     except Exception:
         db.rollback()
         raise
+    finally:
+        db.close()
+
+
+MAX_PERGUNTAS_QUIZ_PUBLICO = 3
+
+
+def registrar_resposta_quiz(
+    especie_id: int,
+    respostas: list[dict],
+    tempo_total_ms: int,
+) -> dict:
+    """
+    Salva uma tentativa de quiz.
+    `respostas`: lista no formato
+    [{"pergunta_idx": int, "alternativa_idx": int, "tempo_ms": int (opcional)}, ...]
+    """
+    db = get_db()
+    try:
+        quiz = db.query(QuizEspecie).filter_by(especie_id=especie_id).first()
+        if quiz is None:
+            raise ValueError("Quiz não encontrado para esta espécie.")
+
+        perguntas = quiz.to_dict()["perguntas"]
+        if not perguntas:
+            raise ValueError("Este quiz não possui perguntas.")
+
+        qtd_esperada = min(len(perguntas), MAX_PERGUNTAS_QUIZ_PUBLICO)
+        if not isinstance(respostas, list) or len(respostas) != qtd_esperada:
+            raise ValueError("Quantidade de respostas incompatível com o quiz.")
+
+        acertos = 0
+        detalhes = []
+        perguntas_respondidas = set()
+
+        for idx_item, item in enumerate(respostas):
+            if isinstance(item, int) and not isinstance(item, bool):
+                p_idx = idx_item
+                alt_idx = item
+                tempo_p = None
+            elif isinstance(item, dict):
+                p_idx = item.get("pergunta_idx", idx_item)
+                alt_idx = item.get("alternativa_idx")
+                tempo_p = item.get("tempo_ms")
+            else:
+                raise ValueError("Formato de resposta inválido.")
+
+            if (
+                not isinstance(p_idx, int)
+                or isinstance(p_idx, bool)
+                or not (0 <= p_idx < len(perguntas))
+                or p_idx in perguntas_respondidas
+            ):
+                raise ValueError("Pergunta inválida nas respostas enviadas.")
+
+            perguntas_respondidas.add(p_idx)
+            pergunta = perguntas[p_idx]
+            alts = pergunta.get("alternativas", [])
+
+            if (
+                not isinstance(alt_idx, int)
+                or isinstance(alt_idx, bool)
+                or not (0 <= alt_idx < len(alts))
+            ):
+                raise ValueError(f"Alternativa inválida na pergunta {idx_item + 1}.")
+
+            correta = bool(alts[alt_idx].get("correta"))
+            if correta:
+                acertos += 1
+
+            registro_item = {
+                "pergunta_idx": p_idx,
+                "alternativa_idx": alt_idx,
+                "correta": correta,
+            }
+            if (
+                isinstance(tempo_p, (int, float))
+                and not isinstance(tempo_p, bool)
+                and 0 <= tempo_p <= 3_600_000
+            ):
+                registro_item["tempo_ms"] = int(tempo_p)
+            detalhes.append(registro_item)
+
+        if isinstance(tempo_total_ms, bool) or not isinstance(tempo_total_ms, (int, float)):
+            tempo_ms = 0
+        else:
+            tempo_ms = max(0, min(int(tempo_total_ms), 3_600_000))
+
+        tentativa = RespostaQuiz(
+            quiz_id=quiz.id,
+            respostas_json=json.dumps(detalhes, ensure_ascii=False),
+            acertos=acertos,
+            total_perguntas=len(detalhes),
+            tempo_total_ms=tempo_ms,
+        )
+        db.add(tentativa)
+        db.commit()
+        return {
+            "acertos": acertos,
+            "total_perguntas": len(detalhes),
+            "tempo_total_ms": tempo_ms,
+        }
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+
+def estatisticas_quiz_especie(especie_id: int) -> dict | None:
+    """Agrega alternativas mais marcadas, taxa de acerto e tempo médio de resposta."""
+    db = get_db()
+    try:
+        quiz = db.query(QuizEspecie).filter_by(especie_id=especie_id).first()
+        if quiz is None:
+            return None
+
+        perguntas = quiz.to_dict()["perguntas"]
+        tentativas = (
+            db.query(RespostaQuiz)
+            .filter_by(quiz_id=quiz.id)
+            .order_by(RespostaQuiz.criado_em.desc())
+            .all()
+        )
+
+        contagem = [
+            [0] * len(p.get("alternativas", []))
+            for p in perguntas
+        ]
+        tempos_pergunta: list[list[int]] = [[] for _ in perguntas]
+        tempos_totais: list[int] = []
+        soma_acertos = 0
+        soma_questoes = 0
+
+        for t in tentativas:
+            if t.tempo_total_ms and t.tempo_total_ms > 0:
+                tempos_totais.append(t.tempo_total_ms)
+            soma_acertos += t.acertos or 0
+            soma_questoes += t.total_perguntas or 0
+
+            try:
+                itens = json.loads(t.respostas_json or "[]")
+            except (json.JSONDecodeError, TypeError):
+                continue
+
+            for idx_item, item in enumerate(itens):
+                if (
+                    isinstance(item, dict)
+                    and isinstance(item.get("pergunta_idx"), int)
+                    and not isinstance(item.get("pergunta_idx"), bool)
+                ):
+                    p_idx = item["pergunta_idx"]
+                else:
+                    p_idx = idx_item
+
+                if not (0 <= p_idx < len(perguntas)):
+                    continue
+
+                alt_idx = item if (isinstance(item, int) and not isinstance(item, bool)) else (
+                    item.get("alternativa_idx") if isinstance(item, dict) else None
+                )
+                if (
+                    isinstance(alt_idx, int)
+                    and not isinstance(alt_idx, bool)
+                    and 0 <= alt_idx < len(contagem[p_idx])
+                ):
+                    contagem[p_idx][alt_idx] += 1
+                if (
+                    isinstance(item, dict)
+                    and isinstance(item.get("tempo_ms"), int)
+                    and not isinstance(item.get("tempo_ms"), bool)
+                    and item["tempo_ms"] > 0
+                ):
+                    tempos_pergunta[p_idx].append(item["tempo_ms"])
+
+        perguntas_stats = []
+        for p_idx, p in enumerate(perguntas):
+            votos_alts = contagem[p_idx]
+            total_votos = sum(votos_alts)
+            max_votos = max(votos_alts) if total_votos > 0 else 0
+            votos_corretos = 0
+
+            alts_stats = []
+            for a_idx, alt in enumerate(p.get("alternativas", [])):
+                votos = votos_alts[a_idx]
+                if alt.get("correta"):
+                    votos_corretos += votos
+                pct = round((votos / total_votos) * 100, 1) if total_votos > 0 else 0.0
+                alts_stats.append({
+                    "texto": alt.get("texto", ""),
+                    "correta": bool(alt.get("correta")),
+                    "votos": votos,
+                    "percentual": pct,
+                    "mais_marcada": votos > 0 and votos == max_votos,
+                })
+
+            tp = tempos_pergunta[p_idx]
+            perguntas_stats.append({
+                "enunciado": p.get("enunciado", ""),
+                "total_votos": total_votos,
+                "taxa_acerto": round((votos_corretos / total_votos) * 100, 1) if total_votos > 0 else 0.0,
+                "tempo_medio_s": round((sum(tp) / len(tp)) / 1000, 1) if tp else None,
+                "alternativas": alts_stats,
+            })
+
+        total_por_tentativa = min(len(perguntas), MAX_PERGUNTAS_QUIZ_PUBLICO)
+        return {
+            "total_respostas": len(tentativas),
+            "taxa_acerto_geral": round((soma_acertos / soma_questoes) * 100, 1) if soma_questoes > 0 else 0.0,
+            "media_acertos": round(soma_acertos / len(tentativas), 1) if tentativas else 0.0,
+            "total_perguntas": total_por_tentativa,
+            "tempo_medio_s": round((sum(tempos_totais) / len(tempos_totais)) / 1000, 1) if tempos_totais else 0.0,
+            "tempo_min_s": round(min(tempos_totais) / 1000, 1) if tempos_totais else 0.0,
+            "tempo_max_s": round(max(tempos_totais) / 1000, 1) if tempos_totais else 0.0,
+            "ultima_resposta": tentativas[0].criado_em.isoformat() if tentativas else None,
+            "perguntas": perguntas_stats,
+        }
+    finally:
+        db.close()
+
+
+def limpar_respostas_quiz(especie_id: int) -> int:
+    """Remove o histórico de respostas do quiz de uma espécie (útil após editar perguntas)."""
+    db = get_db()
+    try:
+        quiz = db.query(QuizEspecie).filter_by(especie_id=especie_id).first()
+        if quiz is None:
+            return 0
+        removidas = db.query(RespostaQuiz).filter_by(quiz_id=quiz.id).delete()
+        db.commit()
+        return removidas
     finally:
         db.close()
 

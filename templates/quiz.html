@@ -1,0 +1,254 @@
+{% extends "base.html" %}
+{% block title %}{{ especie.quiz.titulo or ('Quiz · ' ~ especie.nome) }} · Ninhos Digitais{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center my-4">
+    <div class="col-12 col-md-10 col-lg-8">
+
+        <div class="mb-3">
+            <a href="{{ url_for('especies.pagina_publica', codigo=codigo) }}#especie-{{ especie.id }}"
+               class="btn btn-outline-secondary btn-sm rounded-pill px-3 fw-semibold">
+                <i class="bi bi-arrow-left me-1" aria-hidden="true"></i> Voltar para {{ especie.nome }}
+            </a>
+        </div>
+
+        <article class="card border-0 shadow rounded-4 overflow-hidden bg-white">
+            <div class="bg-success text-white p-4 text-center">
+                <span class="badge bg-white text-success fw-semibold px-3 py-2 rounded-pill mb-2 shadow-sm">
+                    <i class="bi bi-patch-question me-1" aria-hidden="true"></i> Quiz Interativo
+                </span>
+                <h1 class="h2 fw-bold mb-1">
+                    {{ especie.quiz.titulo or ('Quiz: ' ~ especie.nome) }}
+                </h1>
+                <p class="mb-0 opacity-75">
+                    {{ especie.nome }} <span class="fst-italic">({{ especie.nome_cientifico }})</span>
+                </p>
+            </div>
+
+            <div class="card-body p-4 p-sm-5"
+                 id="quizPaginaBox"
+                 data-quiz='{{ especie.quiz | tojson | forceescape }}'
+                 data-endpoint="{{ url_for('especies.responder_quiz_publico', codigo=codigo, especie_id=especie.id) }}"
+                 data-voltar-url="{{ url_for('especies.pagina_publica', codigo=codigo) }}#especie-{{ especie.id }}"
+                 data-csrf="{{ csrf_token() }}">
+
+                <div id="quizPerguntasLista"></div>
+
+                <div id="quizFeedback" class="mt-3"></div>
+
+                <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 pt-3 mt-4 border-top">
+                    <a href="{{ url_for('especies.pagina_publica', codigo=codigo) }}#especie-{{ especie.id }}"
+                       class="btn btn-outline-secondary px-4 fw-semibold">
+                        Voltar ao recinto
+                    </a>
+                    <div class="d-flex gap-2">
+                        <button type="button" id="btnRefazerQuiz" class="btn btn-outline-success px-4 fw-semibold d-none">
+                            <i class="bi bi-arrow-clockwise me-1" aria-hidden="true"></i> Tentar novamente
+                        </button>
+                        <button type="button" id="btnEnviarQuiz" class="btn btn-success px-4 fw-semibold shadow-sm">
+                            <i class="bi bi-check-lg me-1" aria-hidden="true"></i> Enviar respostas
+                        </button>
+                    </div>
+                </div>
+
+            </div>
+        </article>
+
+    </div>
+</div>
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+    const MAX_PERGUNTAS_EXIBIDAS = 3;
+    const box = document.getElementById("quizPaginaBox");
+    if (!box) return;
+
+    const quiz = JSON.parse(box.dataset.quiz || "{}");
+    const perguntasBanco = Array.isArray(quiz.perguntas) ? quiz.perguntas : [];
+    const listaEl = document.getElementById("quizPerguntasLista");
+    const feedbackEl = document.getElementById("quizFeedback");
+    const btnEnviar = document.getElementById("btnEnviarQuiz");
+    const btnRefazer = document.getElementById("btnRefazerQuiz");
+
+    if (!perguntasBanco.length) return;
+
+    let inicioQuiz = performance.now();
+    let inicioPergunta = inicioQuiz;
+    let perguntasAtuais = [];
+    let escolhidas = [];
+    let temposPergunta = [];
+    let labelsPerguntas = [];
+
+    function embaralhar(lista) {
+        const copia = lista.slice();
+        for (let i = copia.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            const temp = copia[i];
+            copia[i] = copia[j];
+            copia[j] = temp;
+        }
+        return copia;
+    }
+
+    function montarQuiz() {
+        const perguntasMapeadas = perguntasBanco.map(function (p, pIdx) {
+            const altsMapeadas = (Array.isArray(p.alternativas) ? p.alternativas : []).map(function (alt, aIdx) {
+                return {
+                    texto: alt.texto,
+                    correta: Boolean(alt.correta),
+                    origIdx: aIdx
+                };
+            });
+            return {
+                enunciado: p.enunciado,
+                origIdx: pIdx,
+                alternativas: embaralhar(altsMapeadas)
+            };
+        });
+
+        perguntasAtuais = embaralhar(perguntasMapeadas).slice(0, MAX_PERGUNTAS_EXIBIDAS);
+
+        const agora = performance.now();
+        inicioQuiz = agora;
+        inicioPergunta = agora;
+        escolhidas = new Array(perguntasAtuais.length).fill(null);
+        temposPergunta = new Array(perguntasAtuais.length).fill(0);
+        labelsPerguntas = [];
+        listaEl.innerHTML = "";
+        feedbackEl.innerHTML = "";
+        btnEnviar.disabled = false;
+        btnEnviar.classList.remove("d-none");
+        btnRefazer.classList.add("d-none");
+
+        perguntasAtuais.forEach(function (p, pIdx) {
+            const bloco = document.createElement("div");
+            bloco.className = pIdx < perguntasAtuais.length - 1 ? "mb-4 pb-3 border-bottom" : "mb-2";
+
+            const titulo = document.createElement("p");
+            titulo.className = "fw-bold text-dark mb-3";
+            titulo.textContent = (pIdx + 1) + ". " + p.enunciado;
+            bloco.appendChild(titulo);
+
+            const grupoAlts = document.createElement("div");
+            grupoAlts.className = "d-flex flex-column gap-2";
+            const labelsAlt = [];
+
+            p.alternativas.forEach(function (alt, aIdx) {
+                const label = document.createElement("label");
+                label.className = "btn btn-outline-secondary text-start bg-white d-flex align-items-center gap-2 p-3 rounded-3";
+
+                const radio = document.createElement("input");
+                radio.type = "radio";
+                radio.name = "quiz_p_" + pIdx;
+                radio.className = "form-check-input mt-0 flex-shrink-0";
+                radio.addEventListener("change", function () {
+                    const agora = performance.now();
+                    temposPergunta[pIdx] += Math.round(agora - inicioPergunta);
+                    inicioPergunta = agora;
+                    escolhidas[pIdx] = aIdx;
+                });
+
+                const span = document.createElement("span");
+                span.textContent = alt.texto;
+
+                label.appendChild(radio);
+                label.appendChild(span);
+                grupoAlts.appendChild(label);
+                labelsAlt.push({ label: label, radio: radio, correta: alt.correta });
+            });
+
+            labelsPerguntas.push(labelsAlt);
+            bloco.appendChild(grupoAlts);
+            listaEl.appendChild(bloco);
+        });
+    }
+
+    btnEnviar.addEventListener("click", async function () {
+        if (escolhidas.some(function (v) { return v === null; })) {
+            feedbackEl.innerHTML = '<div class="alert alert-warning py-2 mb-0">Responda todas as perguntas antes de enviar.</div>';
+            return;
+        }
+
+        btnEnviar.disabled = true;
+        const tempoTotalMs = Math.round(performance.now() - inicioQuiz);
+        const respostasPayload = escolhidas.map(function (altIdxVisual, idxVisual) {
+            const perguntaAtual = perguntasAtuais[idxVisual];
+            const alternativaAtual = perguntaAtual.alternativas[altIdxVisual];
+            return {
+                pergunta_idx: perguntaAtual.origIdx,
+                alternativa_idx: alternativaAtual.origIdx,
+                tempo_ms: temposPergunta[idxVisual]
+            };
+        });
+
+        const formBody = new URLSearchParams();
+        formBody.append("csrf_token", box.dataset.csrf);
+        formBody.append("respostas", JSON.stringify(respostasPayload));
+        formBody.append("tempo_total_ms", String(tempoTotalMs));
+
+        try {
+            const resp = await fetch(box.dataset.endpoint, {
+                method: "POST",
+                headers: {
+                    "X-CSRFToken": box.dataset.csrf
+                },
+                body: formBody
+            });
+
+            const textoBruto = await resp.text();
+            let dados = null;
+            try {
+                dados = JSON.parse(textoBruto);
+            } catch (parseErr) {
+                throw new Error("O servidor retornou uma resposta inválida (HTTP " + resp.status + "). Recarregue a página e tente novamente.");
+            }
+
+            if (!resp.ok || !dados.ok) {
+                throw new Error(dados.erro || "Erro ao registrar suas respostas.");
+            }
+
+            labelsPerguntas.forEach(function (alts, pIdx) {
+                alts.forEach(function (item, aIdx) {
+                    item.radio.disabled = true;
+                    item.label.classList.remove("btn-outline-secondary", "bg-white");
+                    if (item.correta) {
+                        item.label.classList.add("btn-success", "text-white");
+                    } else if (escolhidas[pIdx] === aIdx) {
+                        item.label.classList.add("btn-danger", "text-white");
+                    } else {
+                        item.label.classList.add("btn-outline-secondary", "bg-white", "opacity-75");
+                    }
+                });
+            });
+
+            const acertos = typeof dados.acertos === "number"
+                ? dados.acertos
+                : perguntasAtuais.filter(function (p, i) {
+                    return p.alternativas[escolhidas[i]] && p.alternativas[escolhidas[i]].correta;
+                }).length;
+
+            const notaAdmin = dados.ignorado_admin
+                ? " (modo administrador — resposta não contabilizada nas estatísticas)"
+                : "";
+
+            feedbackEl.innerHTML =
+                '<div class="alert alert-success py-3 mb-0 fw-semibold">' +
+                '<i class="bi bi-trophy-fill me-2" aria-hidden="true"></i>' +
+                'Você acertou ' + acertos + ' de ' + perguntasAtuais.length + ' pergunta(s) em ' + (tempoTotalMs / 1000).toFixed(1) + 's!' +
+                notaAdmin +
+                '</div>';
+
+            btnEnviar.classList.add("d-none");
+            btnRefazer.classList.remove("d-none");
+        } catch (err) {
+            btnEnviar.disabled = false;
+            feedbackEl.innerHTML = '<div class="alert alert-danger py-2 mb-0">' + err.message + '</div>';
+        }
+    });
+
+    btnRefazer.addEventListener("click", montarQuiz);
+
+    montarQuiz();
+});
+</script>
+{% endblock %}
